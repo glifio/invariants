@@ -10,7 +10,7 @@ and checks that it matches on-chain data from a Lotus node.
 
 # Required environment variables
 
-TODO
+* `EVENTS_API` - URL for pools-events API endpoint
 
 # License
 
