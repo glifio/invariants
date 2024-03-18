@@ -44,7 +44,7 @@ func TestMetrics(t *testing.T) {
 
 	// fmt.Printf("Jim chain %+v\n", metricsFromNode)
 
-	// assert.Equal(t, metricsFromAPI.PoolTotalAssets, metricsFromNode.PoolTotalAssets, "Total assets should be equal")
+	assert.Equal(t, metricsFromAPI.PoolTotalAssets, metricsFromNode.PoolTotalAssets, "Total assets should be equal")
 	assert.Equal(t, metricsFromAPI.PoolTotalBorrowed, metricsFromNode.PoolTotalBorrowed, "Total borrowed should be equal")
 	assert.Equal(t, metricsFromAPI.TotalAgentCount, metricsFromNode.TotalAgentCount, "Agent count should be equal")
 }
