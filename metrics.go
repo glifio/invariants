@@ -7,9 +7,19 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
+
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/glifio/go-pools/abigen"
+	"github.com/glifio/go-pools/deploy"
+	"github.com/glifio/invariants/singleton"
 )
 
-const eventsURL = "http://127.0.0.1:8091"
+var eventsURL string
+
+func init() {
+	eventsURL = os.Getenv("EVENTS_API")
+}
 
 type MetricsJSON struct {
 	Height                    uint64 `json:"height"`
@@ -46,8 +56,7 @@ type MetricsResult struct {
 }
 
 // GetMetricsFromAPI calls the REST API to get the metrics
-func GetMetricsFromAPI() (*MetricsResult, error) {
-	ctx := context.Background()
+func GetMetricsFromAPI(ctx context.Context) (*MetricsResult, error) {
 
 	url := fmt.Sprintf("%s/metrics", eventsURL)
 
@@ -113,6 +122,65 @@ func GetMetricsFromAPI() (*MetricsResult, error) {
 		TotalMinerQAP:             totalMinerQAP,
 		TotalMinerRBP:             totalMinerRBP,
 		TotalMinerEDR:             totalMinerEDR,
+	}
+	return &result, nil
+}
+
+// GetMetricsFromNode calls the Lotus node to get the metrics
+func GetMetricsFromNode(ctx context.Context, height uint64) (*MetricsResult, error) {
+	sdk := singleton.PoolsSDK
+
+	ethClient, err := sdk.Extern().ConnectEthClient()
+	if err != nil {
+		return nil, err
+	}
+	defer ethClient.Close()
+
+	blockNumber := big.NewInt(int64(height))
+
+	infinityPool := deploy.ProtoMeta.InfinityPool // FIXME: hardcoded mainnet
+
+	poolCaller, err := abigen.NewInfinityPoolCaller(infinityPool, ethClient)
+	if err != nil {
+		return nil, err
+	}
+
+	totalAssets, err := poolCaller.TotalAssets(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
+	if err != nil {
+		return nil, err
+	}
+
+	totalBorrowed, err := poolCaller.TotalBorrowed(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
+	if err != nil {
+		return nil, err
+	}
+
+	agentFactory := deploy.ProtoMeta.AgentFactory // FIXME: hardcoded mainnet
+
+	agentFactoryCaller, err := abigen.NewAgentFactoryCaller(agentFactory, ethClient)
+	if err != nil {
+		return nil, err
+	}
+
+	agentCount, err := agentFactoryCaller.AgentCount(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
+	if err != nil {
+		return nil, err
+	}
+
+	result := MetricsResult{
+		Height:                    height,
+		Timestamp:                 0, // unused
+		PoolTotalAssets:           totalAssets,
+		PoolTotalBorrowed:         totalBorrowed,
+		PoolTotalBorrowableAssets: nil, // unused
+		PoolExitReserve:           nil, // unused
+		TotalAgentCount:           agentCount.Uint64(),
+		TotalMinerCollaterals:     nil, // unused
+		TotalMinersCount:          0,   // Todo
+		TotalValueLocked:          nil, // unused
+		TotalMinersSectors:        nil, // unused
+		TotalMinerQAP:             nil, // unused
+		TotalMinerRBP:             nil, // unused
 	}
 	return &result, nil
 }
