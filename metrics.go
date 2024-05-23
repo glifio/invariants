@@ -57,9 +57,17 @@ type MetricsResult struct {
 
 // GetMetricsFromAPI calls the REST API to get the metrics
 func GetMetricsFromAPI(ctx context.Context) (*MetricsResult, error) {
-
 	url := fmt.Sprintf("%s/metrics", eventsURL)
+	return getMetrics(ctx, url)
+}
 
+// GetMetricsFromAPIAtHeight calls the REST API to get the metrics
+func GetMetricsFromAPIAtHeight(ctx context.Context, height uint64) (*MetricsResult, error) {
+	url := fmt.Sprintf("%s/metrics/%d", eventsURL, height)
+	return getMetrics(ctx, url)
+}
+
+func getMetrics(ctx context.Context, url string) (*MetricsResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		log.Println("error creating request:", err)
