@@ -19,10 +19,17 @@ var checkCmd = &cobra.Command{
 		ctx := cmd.Context()
 
 		chainID := viper.GetUint64("chain_id")
+		eventsURL := viper.GetString("events_api")
 
 		fmt.Printf("ChainID: %v\n", chainID)
+		fmt.Printf("Events URL: %v\n", eventsURL)
 
-		err := initSingleton(ctx)
+		useArchiveNode, err := cmd.Flags().GetBool("archive")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = initSingleton(ctx, useArchiveNode)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -32,7 +39,7 @@ var checkCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		metricsFromAPI, err := invariants.GetMetricsFromAPIAtHeight(ctx, height)
+		metricsFromAPI, err := invariants.GetMetricsFromAPIAtHeight(ctx, eventsURL, height)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -51,4 +58,5 @@ var checkCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(checkCmd)
+	checkCmd.Flags().Bool("archive", false, "use archive Lotus node")
 }

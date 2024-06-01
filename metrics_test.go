@@ -12,6 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var eventsURL string
+
+func init() {
+	eventsURL = os.Getenv("EVENTS_API")
+}
+
 func init() {
 	chainID, err := strconv.Atoi(os.Getenv("CHAIN_ID"))
 	if err != nil {
@@ -30,7 +36,7 @@ func init() {
 func TestMetrics(t *testing.T) {
 	ctx := context.Background()
 
-	metricsFromAPI, err := GetMetricsFromAPI(ctx)
+	metricsFromAPI, err := GetMetricsFromAPI(ctx, eventsURL)
 	assert.Nil(t, err)
 
 	fmt.Printf("Jim rest %+v\n", metricsFromAPI)
