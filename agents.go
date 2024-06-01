@@ -62,6 +62,24 @@ func GetAgentAvailableBalanceFromAPI(ctx context.Context, eventsURL string, agen
 	return &result, nil
 }
 
+// GetAgentAvailableBalanceAtHeightFromAPI calls the REST API to get the available balance for an agent at a particular epoch
+func GetAgentAvailableBalanceAtHeightFromAPI(ctx context.Context, eventsURL string, agentID uint64, height uint64) (*big.Int, error) {
+	balance := big.NewInt(0)
+
+	txs, err := GetAgentTransactionsFromAPI(ctx, eventsURL, agentID)
+	if err != nil {
+		return nil, err
+	}
+	for _, tx := range txs {
+		if tx.Height > height {
+			break
+		}
+		balance = tx.AvailableBalance
+	}
+
+	return balance, nil
+}
+
 type TransactionJSON struct {
 	Amount           string `json:"amount"`
 	AvailableBalance string `json:"availableBalance"`
