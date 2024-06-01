@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/big"
 	"strconv"
 
 	"github.com/glifio/invariants"
+	"github.com/glifio/invariants/singleton"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -25,7 +27,7 @@ var checkAgentBalancesCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		agent, err := strconv.ParseUint(args[0], 10, 64)
+		agentID, err := strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -36,23 +38,46 @@ var checkAgentBalancesCmd = &cobra.Command{
 		}
 
 		if epoch == 0 {
-			availableBalanceResult, err := invariants.GetAgentAvailableBalanceFromAPI(ctx, eventsURL, agent)
+			availableBalanceResult, err := invariants.GetAgentAvailableBalanceFromAPI(ctx, eventsURL, agentID)
 			if err != nil {
 				log.Fatal(err)
 			}
 			if availableBalanceResult.AvailableBalanceDB.Cmp(availableBalanceResult.AvailableBalanceNd) == 0 {
-				fmt.Printf("Agent %d: Success, latest available balances match: %v\n", agent, availableBalanceResult.AvailableBalanceDB)
+				fmt.Printf("Agent %d: Success, latest available balances match: %v\n", agentID, availableBalanceResult.AvailableBalanceDB)
 				return
 			}
-			fmt.Printf("Agent %d: Error, latest available balance from REST API doesn't match node.\n", agent)
+			fmt.Printf("Agent %d: Error, latest available balance from REST API doesn't match node.\n", agentID)
 			fmt.Printf("  Node: %v\n", availableBalanceResult.AvailableBalanceNd)
 			fmt.Printf("   API: %v\n", availableBalanceResult.AvailableBalanceDB)
 		} else {
-			availableBalance, err := invariants.GetAgentAvailableBalanceAtHeightFromAPI(ctx, eventsURL, agent, epoch)
+			availableBalance, err := invariants.GetAgentAvailableBalanceAtHeightFromAPI(ctx, eventsURL, agentID, epoch)
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("Jim balance: %v\n", availableBalance)
+
+			agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			nextEpoch, err := getNextEpoch(ctx, epoch)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			q := singleton.PoolsArchiveSDK.Query()
+			liquidAssets, err := q.AgentLiquidAssets(ctx, agent.AddressNative, big.NewInt(int64(nextEpoch)))
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			if availableBalance.Cmp(liquidAssets) == 0 {
+				fmt.Printf("Agent %d @%d: Success, latest available balances match: %v\n", agentID, epoch, availableBalance)
+				return
+			}
+			fmt.Printf("Agent %d @%d: Error, available balance from REST API doesn't match node.\n", agentID, epoch)
+			fmt.Printf("  Node: %v\n", liquidAssets)
+			fmt.Printf("   API: %v\n", availableBalance)
 		}
 	},
 }

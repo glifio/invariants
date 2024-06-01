@@ -1,4 +1,5 @@
 .env
 SETENV
 *.env
-./invariants
+/invariants
+
