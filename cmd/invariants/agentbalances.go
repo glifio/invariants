@@ -12,9 +12,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-// checkAgentBalancesCmd represents the checkAgentBalance command
-var checkAgentBalancesCmd = &cobra.Command{
-	Use:   "check-agent-balances [agent-id] [--epoch <epoch>]",
+// agentBalancesCmd represents the checkAgentBalance command
+var agentBalancesCmd = &cobra.Command{
+	Use:   "agent-balances [agent-id] [--epoch <epoch>]",
 	Short: "Compare the balances from the API and the node for an agent",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -83,6 +83,6 @@ var checkAgentBalancesCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(checkAgentBalancesCmd)
-	checkAgentBalancesCmd.Flags().Uint64("epoch", 0, "Check at epoch")
+	rootCmd.AddCommand(agentBalancesCmd)
+	agentBalancesCmd.Flags().Uint64("epoch", 0, "Check at epoch")
 }
