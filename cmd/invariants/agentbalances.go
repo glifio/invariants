@@ -124,7 +124,7 @@ func examineTransactionHistory(ctx context.Context, eventsURL string, agentID ui
 			log.Fatal(err)
 		}
 		if tx.AvailableBalance.Cmp(liquidAssets) == 0 {
-			fmt.Printf("Matches: %v\n", liquidAssets) // Shouldn't happen
+			fmt.Printf("Matches: %v\n", liquidAssets) // Might happen if DB is out-of-date
 			return
 		} else {
 			fmt.Printf("Mismatch! Node: %v API: %v\n", liquidAssets, tx.AvailableBalance)
@@ -145,6 +145,7 @@ func binarySearch(
 	if searchIdx == goodIdx || searchIdx == badIdx {
 		fmt.Printf("Last good tx via API (idx: %d) @%d: %v\n", goodIdx, txs[goodIdx].Height, txs[goodIdx].AvailableBalance)
 		fmt.Printf("First bad tx via API (idx: %d) @%d\n", badIdx, txs[badIdx].Height)
+		findBalanceTransitions(ctx, agent, txs[goodIdx], txs[badIdx])
 		return
 	}
 	tx := txs[searchIdx]
@@ -159,6 +160,62 @@ func binarySearch(
 	} else {
 		fmt.Printf("Mismatch! Node: %v API: %v\n", liquidAssets, tx.AvailableBalance)
 		binarySearch(ctx, agent, txs, goodIdx, searchIdx)
+	}
+}
+
+func findBalanceTransitions(
+	ctx context.Context,
+	agent *invariants.Agent,
+	goodTx invariants.Transaction,
+	badTx invariants.Transaction,
+) {
+	fmt.Printf("Looking for interim balance transitions on node for agent %d...\n", agent.ID)
+	fmt.Printf("From %d to %d\n", goodTx.Height, badTx.Height)
+	height := goodTx.Height
+	balance := goodTx.AvailableBalance
+	var err error
+	for {
+		fmt.Printf("%d: %v\n", height, balance)
+		height, balance, err = findNextBalanceTransition(ctx, agent, height+1, balance, badTx.Height-1)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if height == 0 {
+			break
+		}
+	}
+}
+
+func findNextBalanceTransition(
+	ctx context.Context,
+	agent *invariants.Agent,
+	minHeight uint64,
+	prevBalance *big.Int,
+	maxHeight uint64,
+) (uint64, *big.Int, error) {
+	if maxHeight <= minHeight {
+		return 0, nil, nil
+	}
+	fmt.Printf("  Searching %d to %d\n", minHeight, maxHeight)
+	sampleHeight := (maxHeight-minHeight)/2 + minHeight
+	fmt.Printf("  Sample height: %d\n", sampleHeight)
+	liquidAssets, err := getLiquidAssetsAtHeight(ctx, agent, sampleHeight)
+	if err != nil {
+		return 0, nil, err
+	}
+	fmt.Printf("  Liquid assets @%d: %v\n", sampleHeight, liquidAssets)
+	if prevBalance.Cmp(liquidAssets) == 0 {
+		return findNextBalanceTransition(ctx, agent, sampleHeight+1, prevBalance, maxHeight)
+	} else {
+		height, balance, err := findNextBalanceTransition(ctx, agent, minHeight, prevBalance, sampleHeight-1)
+		if err != nil {
+			return 0, nil, err
+		}
+		if height > 0 {
+			return height, balance, nil
+		} else {
+			return sampleHeight, liquidAssets, nil
+		}
 	}
 }
 
