@@ -124,7 +124,14 @@ func examineTransactionHistory(ctx context.Context, eventsURL string, agentID ui
 			log.Fatal(err)
 		}
 		if tx.AvailableBalance.Cmp(liquidAssets) == 0 {
-			fmt.Printf("Matches: %v\n", liquidAssets) // Might happen if DB is out-of-date
+			fmt.Printf("Matches: %v\n", liquidAssets)
+			// Probably missing a transaction beyond last epoch in database
+			latestHeight, err := getHeadEpoch(ctx)
+			if err != nil {
+				log.Fatal(err)
+			}
+			txs = append(txs, invariants.Transaction{Height: latestHeight - 1})
+			binarySearch(ctx, agent, txs, idx, len(txs)-1)
 			return
 		} else {
 			fmt.Printf("Mismatch! Node: %v API: %v\n", liquidAssets, tx.AvailableBalance)
@@ -193,12 +200,11 @@ func findNextBalanceTransition(
 	prevBalance *big.Int,
 	maxHeight uint64,
 ) (uint64, *big.Int, error) {
-	if maxHeight <= minHeight {
+	if maxHeight < minHeight {
 		return 0, nil, nil
 	}
 	fmt.Printf("  Searching %d to %d\n", minHeight, maxHeight)
 	sampleHeight := (maxHeight-minHeight)/2 + minHeight
-	fmt.Printf("  Sample height: %d\n", sampleHeight)
 	liquidAssets, err := getLiquidAssetsAtHeight(ctx, agent, sampleHeight)
 	if err != nil {
 		return 0, nil, err

@@ -8,6 +8,17 @@ import (
 	"github.com/glifio/invariants/singleton"
 )
 
+func getHeadEpoch(ctx context.Context) (uint64, error) {
+	lotus := singleton.Lotus()
+
+	ts, err := lotus.Api.ChainHead(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(ts.Height()), nil
+}
+
 func getNextEpoch(ctx context.Context, epoch uint64) (uint64, error) {
 	lotus := singleton.Lotus()
 
