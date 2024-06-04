@@ -40,7 +40,7 @@ var iFILTotalSupplyCmd = &cobra.Command{
 			if err != nil {
 				log.Fatal(err)
 			}
-			epoch = epoch - 1
+			epoch = epoch - 2
 		}
 
 		apiTotalSupply, err := invariants.GetIFILTotalSupplyFromAPI(ctx, eventsURL, epoch)
