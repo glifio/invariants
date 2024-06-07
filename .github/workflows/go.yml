@@ -1,4 +1,4 @@
-name: invariants
+name: GLIF Invariants
 
 on:
   workflow_dispatch:
