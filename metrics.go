@@ -7,19 +7,12 @@ import (
 	"log"
 	"math/big"
 	"net/http"
-	"os"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/glifio/go-pools/abigen"
 	"github.com/glifio/go-pools/deploy"
 	"github.com/glifio/invariants/singleton"
 )
-
-var eventsURL string
-
-func init() {
-	eventsURL = os.Getenv("EVENTS_API")
-}
 
 type MetricsJSON struct {
 	Height                    uint64 `json:"height"`
@@ -56,10 +49,18 @@ type MetricsResult struct {
 }
 
 // GetMetricsFromAPI calls the REST API to get the metrics
-func GetMetricsFromAPI(ctx context.Context) (*MetricsResult, error) {
-
+func GetMetricsFromAPI(ctx context.Context, eventsURL string) (*MetricsResult, error) {
 	url := fmt.Sprintf("%s/metrics", eventsURL)
+	return getMetrics(ctx, url)
+}
 
+// GetMetricsFromAPIAtHeight calls the REST API to get the metrics
+func GetMetricsFromAPIAtHeight(ctx context.Context, eventsURL string, height uint64) (*MetricsResult, error) {
+	url := fmt.Sprintf("%s/metrics/%d", eventsURL, height)
+	return getMetrics(ctx, url)
+}
+
+func getMetrics(ctx context.Context, url string) (*MetricsResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		log.Println("error creating request:", err)

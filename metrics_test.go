@@ -2,6 +2,7 @@ package invariants
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -10,6 +11,12 @@ import (
 	"github.com/glifio/invariants/singleton"
 	"github.com/stretchr/testify/assert"
 )
+
+var eventsURL string
+
+func init() {
+	eventsURL = os.Getenv("EVENTS_API")
+}
 
 func init() {
 	chainID, err := strconv.Atoi(os.Getenv("CHAIN_ID"))
@@ -29,10 +36,10 @@ func init() {
 func TestMetrics(t *testing.T) {
 	ctx := context.Background()
 
-	metricsFromAPI, err := GetMetricsFromAPI(ctx)
+	metricsFromAPI, err := GetMetricsFromAPI(ctx, eventsURL)
 	assert.Nil(t, err)
 
-	// fmt.Printf("Jim rest %+v\n", metricsFromAPI)
+	fmt.Printf("Jim rest %+v\n", metricsFromAPI)
 
 	if metricsFromAPI.Height == 0 {
 		t.Fatal("Height is zero")
@@ -42,7 +49,7 @@ func TestMetrics(t *testing.T) {
 	metricsFromNode, err := GetMetricsFromNode(ctx, height)
 	assert.Nil(t, err)
 
-	// fmt.Printf("Jim chain %+v\n", metricsFromNode)
+	fmt.Printf("Jim chain %+v\n", metricsFromNode)
 
 	assert.Equal(t, metricsFromAPI.PoolTotalAssets, metricsFromNode.PoolTotalAssets, "Total assets should be equal")
 	assert.Equal(t, metricsFromAPI.PoolTotalBorrowed, metricsFromNode.PoolTotalBorrowed, "Total borrowed should be equal")
