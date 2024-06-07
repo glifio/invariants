@@ -55,7 +55,10 @@ var agentBalancesCmd = &cobra.Command{
 				log.Fatal(err)
 			}
 
-			checkAgentBalance(ctx, eventsURL, epoch, agentID)
+			err = checkAgentBalance(ctx, eventsURL, epoch, agentID)
+			if err != nil {
+				log.Fatal(err)
+			}
 		} else {
 			if len(args) != 0 {
 				cmd.Usage()
