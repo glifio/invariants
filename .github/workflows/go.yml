@@ -1,9 +1,8 @@
 name: GLIF Invariants
 
 on:
-  workflow_dispatch:
   schedule:
-  - cron: "12 * * * *"
+  - cron: '*/5 * * * *'
 
 env:
   CHAIN_ID: ${{ vars.CHAIN_ID }}
