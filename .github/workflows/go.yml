@@ -3,12 +3,20 @@ name: GLIF Invariants
 on:
   workflow_dispatch:
 
-jobs:
+env:
+  CHAIN_ID: 314
+  LOTUS_PRIVATE_ADDR: ${{ vars.LOTUS_PRIVATE_ADDR }}
 
-  build:
+jobs:
+  build_and_test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+
+    - name: Echo env vars
+      run: |
+        echo "CHAIN_ID: $CHAIN_ID"
+        echo "LOTUS_PRIVATE_ADDR: $LOTUS_PRIVATE_ADDR"
 
     - name: Set up Go
       uses: actions/setup-go@v5
