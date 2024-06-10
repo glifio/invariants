@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  CHAIN_ID: 314
+  CHAIN_ID: ${{ vars.CHAIN_ID }}
   LOTUS_PRIVATE_ADDR: ${{ vars.LOTUS_PRIVATE_ADDR }}
   LOTUS_PRIVATE_TOKEN: ${{ secrets.LOTUS_PRIVATE_TOKEN }}
   EVENTS_API: ${{ vars.EVENTS_API }}
