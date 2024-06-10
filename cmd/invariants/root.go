@@ -75,7 +75,9 @@ func initConfig() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		fmt.Println(err)
+		if os.Getenv("QUIET") == "" {
+			fmt.Println(err)
+		}
 	}
 }
 
@@ -86,7 +88,9 @@ func initSingleton(ctx context.Context) error {
 	}
 
 	if !useArchiveNode {
-		fmt.Printf("Using private node: %v\n", viper.GetString("lotus_private_addr"))
+		if os.Getenv("QUIET") == "" {
+			fmt.Printf("Using private node: %v\n", viper.GetString("lotus_private_addr"))
+		}
 		singleton.InitPoolsSDK(
 			ctx,
 			viper.GetInt64("chain_id"),
@@ -102,7 +106,9 @@ func initSingleton(ctx context.Context) error {
 			return fmt.Errorf("failed to connect to lotus node: %v", err)
 		}
 	} else {
-		fmt.Printf("Using archive node: %v\n", viper.GetString("lotus_archive_addr"))
+		if os.Getenv("QUIET") == "" {
+			fmt.Printf("Using archive node: %v\n", viper.GetString("lotus_archive_addr"))
+		}
 		singleton.InitPoolsSDK(
 			ctx,
 			viper.GetInt64("chain_id"),
