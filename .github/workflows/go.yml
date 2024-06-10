@@ -31,4 +31,4 @@ jobs:
       run: go build -v ./cmd/...
 
     - name: Test iFIL Total Supply
-      run: ./invariants ifil-total-supply
+      run: ./invariants --archive=false ifil-total-supply
