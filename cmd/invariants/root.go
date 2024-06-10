@@ -43,6 +43,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "mainnet", "config file (default is ./mainnet.env)")
+	rootCmd.PersistentFlags().Bool("archive", true, "use archive Lotus node")
 
 	viper.BindEnv("port")
 	viper.BindEnv("chain_id")
@@ -50,8 +51,6 @@ func init() {
 	viper.BindEnv("lotus_archive_addr")
 	viper.BindEnv("lotus_private_token")
 	viper.BindEnv("lotus_private_addr")
-	viper.BindEnv("postgres_conn")
-	viper.BindEnv("tablename_suffix")
 	viper.BindEnv("events_api")
 }
 
@@ -80,8 +79,14 @@ func initConfig() {
 	}
 }
 
-func initSingleton(ctx context.Context, useArchiveNode bool) error {
+func initSingleton(ctx context.Context) error {
+	useArchiveNode, err := rootCmd.PersistentFlags().GetBool("archive")
+	if err != nil {
+		return err
+	}
+
 	if !useArchiveNode {
+		fmt.Printf("Using private node: %v\n", viper.GetString("lotus_private_addr"))
 		singleton.InitPoolsSDK(
 			ctx,
 			viper.GetInt64("chain_id"),
@@ -97,7 +102,8 @@ func initSingleton(ctx context.Context, useArchiveNode bool) error {
 			return fmt.Errorf("failed to connect to lotus node: %v", err)
 		}
 	} else {
-		singleton.InitPoolsArchiveSDK(
+		fmt.Printf("Using archive node: %v\n", viper.GetString("lotus_archive_addr"))
+		singleton.InitPoolsSDK(
 			ctx,
 			viper.GetInt64("chain_id"),
 			viper.GetString("lotus_archive_addr"),

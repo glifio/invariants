@@ -20,7 +20,7 @@ var iFILTotalSupplyCmd = &cobra.Command{
 
 		eventsURL := viper.GetString("events_api")
 
-		err := initSingleton(ctx, true)
+		err := initSingleton(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -71,7 +71,7 @@ func GetIFILTotalSupplyFromNode(ctx context.Context, height uint64) (*IFILTotalS
 	}
 
 	blockNumber := big.NewInt(int64(height))
-	q := singleton.PoolsArchiveSDK.Query()
+	q := singleton.PoolsSDK.Query()
 
 	totalSupply, err := q.IFILSupply(ctx, blockNumber)
 	if err != nil {
