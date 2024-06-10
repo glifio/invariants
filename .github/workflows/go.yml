@@ -8,6 +8,7 @@ env:
   LOTUS_PRIVATE_ADDR: ${{ vars.LOTUS_PRIVATE_ADDR }}
   LOTUS_PRIVATE_TOKEN: ${{ secrets.LOTUS_PRIVATE_TOKEN }}
   EVENTS_API: ${{ vars.EVENTS_API }}
+  QUIET: true
 
 jobs:
   build_and_test:
@@ -32,3 +33,6 @@ jobs:
 
     - name: Test iFIL Total Supply
       run: ./invariants --archive=false ifil-total-supply
+
+    - name: Test Agent Balances (random)
+      run: ./invariants --archive=false agent-balances --random 10
