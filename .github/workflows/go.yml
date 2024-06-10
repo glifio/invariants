@@ -6,6 +6,8 @@ on:
 env:
   CHAIN_ID: 314
   LOTUS_PRIVATE_ADDR: ${{ vars.LOTUS_PRIVATE_ADDR }}
+  LOTUS_PRIVATE_TOKEN: ${{ secrets.LOTUS_PRIVATE_TOKEN }}
+  EVENTS_API: ${{ vars.EVENTS_API }}
 
 jobs:
   build_and_test:
@@ -17,6 +19,8 @@ jobs:
       run: |
         echo "CHAIN_ID: $CHAIN_ID"
         echo "LOTUS_PRIVATE_ADDR: $LOTUS_PRIVATE_ADDR"
+        echo "LOTUS_PRIVATE_TOKEN: $LOTUS_PRIVATE_TOKEN"
+        echo "EVENTS_API: $EVENTS_API"
 
     - name: Set up Go
       uses: actions/setup-go@v5
