@@ -24,12 +24,7 @@ var checkCmd = &cobra.Command{
 		fmt.Printf("ChainID: %v\n", chainID)
 		fmt.Printf("Events URL: %v\n", eventsURL)
 
-		useArchiveNode, err := cmd.Flags().GetBool("archive")
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = initSingleton(ctx, useArchiveNode)
+		err := initSingleton(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -58,5 +53,4 @@ var checkCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(checkCmd)
-	checkCmd.Flags().Bool("archive", false, "use archive Lotus node")
 }

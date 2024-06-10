@@ -24,7 +24,7 @@ var agentBalancesCmd = &cobra.Command{
 
 		eventsURL := viper.GetString("events_api")
 
-		err := initSingleton(ctx, true)
+		err := initSingleton(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -298,7 +298,7 @@ func getLiquidAssetsAtHeight(ctx context.Context, agent *invariants.Agent, heigh
 		return nil, err
 	}
 
-	q := singleton.PoolsArchiveSDK.Query()
+	q := singleton.PoolsSDK.Query()
 	liquidAssets, err := q.AgentLiquidAssets(ctx, agent.AddressNative, big.NewInt(int64(nextEpoch)))
 	if err != nil {
 		return nil, err
