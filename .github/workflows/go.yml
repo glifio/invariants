@@ -3,7 +3,7 @@ name: GLIF Invariants
 on:
   workflow_dispatch:
   schedule:
-  - cron: "12 * * * *" # 12 minutes past every hour
+  - cron: "12 * * * *"
 
 env:
   CHAIN_ID: ${{ vars.CHAIN_ID }}
