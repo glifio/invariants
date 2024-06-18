@@ -10,10 +10,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-// checkCmd represents the check command
-var checkCmd = &cobra.Command{
-	Use:   "check [epoch]",
-	Short: "Compare the metrics from the API and the node at height",
+// poolTotalAssetsCmd represents the pool-total-assets command
+var poolTotalAssetsCmd = &cobra.Command{
+	Use:   "pool-total-assets [epoch]",
+	Short: "Compare the pool-total-assets from the API and the node at height",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
@@ -52,5 +52,5 @@ var checkCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(checkCmd)
+	rootCmd.AddCommand(poolTotalAssetsCmd)
 }

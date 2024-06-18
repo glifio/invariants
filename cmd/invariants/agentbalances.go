@@ -55,7 +55,12 @@ var agentBalancesCmd = &cobra.Command{
 				log.Fatal(err)
 			}
 
-			err = checkAgentBalance(ctx, eventsURL, epoch, agentID)
+			agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			err = checkAgentBalance(ctx, eventsURL, epoch, agent)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -76,7 +81,7 @@ var agentBalancesCmd = &cobra.Command{
 					return
 				}
 				for _, agent := range agents {
-					err := checkAgentBalance(ctx, eventsURL, epoch, agent.ID)
+					err := checkAgentBalance(ctx, eventsURL, epoch, &agent)
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -90,7 +95,7 @@ var agentBalancesCmd = &cobra.Command{
 				})
 				for i := 0; i < int(randomAgents); i++ {
 					agent := agents[i]
-					err := checkAgentBalance(ctx, eventsURL, epoch, agent.ID)
+					err := checkAgentBalance(ctx, eventsURL, epoch, &agent)
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -109,7 +114,8 @@ func init() {
 	agentBalancesCmd.Flags().Bool("all", false, "Check all agents")
 }
 
-func checkAgentBalance(ctx context.Context, eventsURL string, epoch uint64, agentID uint64) error {
+func checkAgentBalance(ctx context.Context, eventsURL string, epoch uint64, agent *invariants.Agent) error {
+	agentID := agent.ID
 	if epoch == 0 {
 		availableBalanceResult, err := invariants.GetAgentAvailableBalanceFromAPI(ctx, eventsURL, agentID)
 		if err != nil {
@@ -122,7 +128,7 @@ func checkAgentBalance(ctx context.Context, eventsURL string, epoch uint64, agen
 		fmt.Printf("Agent %d: Error, latest available balance from REST API doesn't match node.\n", agentID)
 		fmt.Printf("  Node: %v\n", availableBalanceResult.AvailableBalanceNd)
 		fmt.Printf("   API: %v\n", availableBalanceResult.AvailableBalanceDB)
-		examineTransactionHistory(ctx, eventsURL, agentID)
+		examineTransactionHistory(ctx, eventsURL, agent)
 	} else {
 		availableBalance, err := invariants.GetAgentAvailableBalanceAtHeightFromAPI(ctx, eventsURL, agentID, epoch)
 		if err != nil {
@@ -150,18 +156,29 @@ func checkAgentBalance(ctx context.Context, eventsURL string, epoch uint64, agen
 	return nil
 }
 
-func examineTransactionHistory(ctx context.Context, eventsURL string, agentID uint64) {
+func examineTransactionHistory(ctx context.Context, eventsURL string, agent *invariants.Agent) {
+	agentID := agent.ID
 	fmt.Println("Examining transaction history...")
-	agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
-	if err != nil {
-		log.Fatal(err)
-	}
 	txs, err := invariants.GetAgentTransactionsFromAPI(ctx, eventsURL, agentID)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("%d transactions retrieved from REST API\n", len(txs))
-	if len(txs) > 0 {
+	if len(txs) == 0 {
+		fmt.Println("No transactions in db.")
+		txs = append(txs, invariants.Transaction{Height: agent.Height, AvailableBalance: big.NewInt(0)})
+		height, err := getHeadEpoch(ctx)
+		if err != nil {
+			log.Fatal(err)
+		}
+		height = height - 2
+		liquidAssets, err := getLiquidAssetsAtHeight(ctx, agent, height)
+		if err != nil {
+			log.Fatal(err)
+		}
+		txs = append(txs, invariants.Transaction{Height: height, AvailableBalance: liquidAssets})
+		binarySearch(ctx, agent, txs, 0, 1)
+	} else {
 		// First
 		tx := txs[0]
 		firstIdx := 0
@@ -174,12 +191,26 @@ func examineTransactionHistory(ctx context.Context, eventsURL string, agentID ui
 			fmt.Printf("Matches: %v\n", liquidAssets)
 		} else {
 			fmt.Printf("Mismatch! Node: %v API: %v\n", liquidAssets, tx.AvailableBalance)
+			firstTx := invariants.Transaction{Height: agent.Height, AvailableBalance: big.NewInt(0)}
+			txs = append([]invariants.Transaction{firstTx}, txs...)
+			binarySearch(ctx, agent, txs, 0, 1)
 			return
 		}
 
 		// Last
 		if len(txs) == 1 {
-			fmt.Println("Only one transaction.")
+			fmt.Println("Only one transaction in db.")
+			height, err := getHeadEpoch(ctx)
+			if err != nil {
+				log.Fatal(err)
+			}
+			height = height - 3
+			liquidAssets, err := getLiquidAssetsAtHeight(ctx, agent, height)
+			if err != nil {
+				log.Fatal(err)
+			}
+			txs = append(txs, invariants.Transaction{Height: height, AvailableBalance: liquidAssets})
+			binarySearch(ctx, agent, txs, 0, 1)
 			return
 		}
 		idx := len(txs) - 1
