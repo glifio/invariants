@@ -39,3 +39,7 @@ jobs:
 
     - name: Test Agent Balances (random)
       run: ./invariants --archive=false agent-balances --random 10
+
+    - name: Test Metrics
+      run: ./invariants --archive=false metrics
+
