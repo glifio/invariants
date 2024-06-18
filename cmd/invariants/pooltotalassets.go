@@ -10,10 +10,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-// poolTotalAssetsCmd represents the pool-total-assets command
-var poolTotalAssetsCmd = &cobra.Command{
-	Use:   "pool-total-assets [epoch]",
-	Short: "Compare the pool-total-assets from the API and the node at height",
+// metricsCmd represents the metrics command
+var metricsCmd = &cobra.Command{
+	Use:   "metrics [epoch]",
+	Short: "Compare the metrics from the API and the node at height",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
@@ -38,19 +38,25 @@ var poolTotalAssetsCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		//fmt.Printf("Jim rest %+v\n", metricsFromAPI)
+		fmt.Printf("Jim rest %+v\n", metricsFromAPI)
 		metricsFromNode, err := invariants.GetMetricsFromNode(ctx, height)
 		if err != nil {
 			log.Fatal(err)
 		}
-		//fmt.Printf("Jim chain %+v\n", metricsFromNode)
+		fmt.Printf("Jim chain %+v\n", metricsFromNode)
 
 		fmt.Printf("REST: PoolTotalAssets %v\n", metricsFromAPI.PoolTotalAssets)
 		fmt.Printf("Node: PoolTotalAssets %v\n", metricsFromNode.PoolTotalAssets)
+
+		fmt.Printf("REST: PoolTotalBorrowed %v\n", metricsFromAPI.PoolTotalBorrowed)
+		fmt.Printf("Node: PoolTotalBorrowed %v\n", metricsFromNode.PoolTotalBorrowed)
+
+		fmt.Printf("REST: TotalAgentCount %v\n", metricsFromAPI.TotalAgentCount)
+		fmt.Printf("Node: TotalAgentCount %v\n", metricsFromNode.TotalAgentCount)
 
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(poolTotalAssetsCmd)
+	rootCmd.AddCommand(metricsCmd)
 }
