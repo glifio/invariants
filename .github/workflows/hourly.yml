@@ -1,0 +1,45 @@
+name: GLIF Invariants Hourly
+
+on:
+  push:
+  schedule:
+    - cron: "35 * * * *"
+  workflow_dispatch:
+
+env:
+  CHAIN_ID: ${{ vars.CHAIN_ID }}
+  LOTUS_PRIVATE_ADDR: ${{ vars.LOTUS_PRIVATE_ADDR }}
+  LOTUS_PRIVATE_TOKEN: ${{ secrets.LOTUS_PRIVATE_TOKEN }}
+  EVENTS_API: ${{ vars.EVENTS_API }}
+  QUIET: true
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Echo env vars
+      run: |
+        echo "CHAIN_ID: $CHAIN_ID"
+        echo "LOTUS_PRIVATE_ADDR: $LOTUS_PRIVATE_ADDR"
+        echo "LOTUS_PRIVATE_TOKEN: $LOTUS_PRIVATE_TOKEN"
+        echo "EVENTS_API: $EVENTS_API"
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Build
+      run: go build -v ./cmd/...
+
+    - name: Test iFIL Total Supply
+      run: ./invariants --archive=false ifil-total-supply
+
+    - name: Test Agent Balances (random)
+      run: ./invariants --archive=false agent-balances --random 10
+
+    - name: Test Metrics
+      run: ./invariants --archive=false metrics
+
