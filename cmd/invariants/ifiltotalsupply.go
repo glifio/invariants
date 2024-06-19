@@ -48,7 +48,7 @@ var iFILTotalSupplyCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		nodeTotalSupply, err := invariants.GetIFILTotalSupplyFromNode(ctx, epoch)
+		nodeTotalSupply, resultEpoch, err := invariants.GetIFILTotalSupplyFromNode(ctx, epoch)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -58,8 +58,8 @@ var iFILTotalSupplyCmd = &cobra.Command{
 			return
 		}
 		fmt.Printf("@%d: Error, iFIL total supply from REST API doesn't match node.\n", epoch)
-		fmt.Printf("  Node: %v\n", nodeTotalSupply.IFILTotalSupply)
-		fmt.Printf("   API: %v\n", apiTotalSupply.IFILTotalSupply)
+		fmt.Printf("  Node @%d: %v\n", resultEpoch, nodeTotalSupply.IFILTotalSupply)
+		fmt.Printf("   API @%d: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
 		if findMissing {
 			findMissingIFILEvents(ctx, eventsURL, epoch)
 		}
@@ -102,7 +102,7 @@ func searchPassingIFILTotalSupply(ctx context.Context, eventsURL string, maxEpoc
 		return 0, err
 	}
 
-	nodeTotalSupply, err := invariants.GetIFILTotalSupplyFromNode(ctx, minEpoch)
+	nodeTotalSupply, _, err := invariants.GetIFILTotalSupplyFromNode(ctx, minEpoch)
 	if err != nil {
 		return 0, err
 	}

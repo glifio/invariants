@@ -41,16 +41,29 @@ var metricsCmd = &cobra.Command{
 			epoch = epoch - 2
 		}
 
+		checkMinerCount, err := cmd.Flags().GetBool("miner-count")
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		metricsFromAPI, err := invariants.GetMetricsFromAPIAtHeight(ctx, eventsURL, epoch)
 		if err != nil {
 			log.Fatal(err)
 		}
 		// fmt.Printf("Jim rest %+v\n", metricsFromAPI)
-		metricsFromNode, err := invariants.GetMetricsFromNode(ctx, epoch)
+		metricsFromNode, resultEpoch, err := invariants.GetMetricsFromNode(ctx, epoch)
 		if err != nil {
 			log.Fatal(err)
 		}
 		// fmt.Printf("Jim chain %+v\n", metricsFromNode)
+		var minerCountFromNode uint64
+		if checkMinerCount {
+			minerCountFromNode, resultEpoch, err = invariants.GetMinerCountFromNode(ctx, epoch)
+			if err != nil {
+				log.Fatal(err)
+			}
+			// fmt.Printf("Jim minerCount %+v\n", minerCountFromNode)
+		}
 
 		fail := false
 
@@ -58,8 +71,8 @@ var metricsCmd = &cobra.Command{
 			fmt.Printf("@%d: Success, pool total assets matches: %v\n", epoch, metricsFromAPI.PoolTotalAssets)
 		} else {
 			fmt.Printf("@%d: Error, pool total assets from REST API doesn't match node.\n", epoch)
-			fmt.Printf("  Node: %v\n", metricsFromNode.PoolTotalAssets)
-			fmt.Printf("   API: %v\n", metricsFromAPI.PoolTotalAssets)
+			fmt.Printf("  Node @%d: %v\n", resultEpoch, metricsFromNode.PoolTotalAssets)
+			fmt.Printf("   API @%d: %v\n", epoch, metricsFromAPI.PoolTotalAssets)
 			fail = true
 		}
 
@@ -67,8 +80,8 @@ var metricsCmd = &cobra.Command{
 			fmt.Printf("@%d: Success, pool total borrowed matches: %v\n", epoch, metricsFromAPI.PoolTotalBorrowed)
 		} else {
 			fmt.Printf("@%d: Error, pool total borrowed from REST API doesn't match node.\n", epoch)
-			fmt.Printf("  Node: %v\n", metricsFromNode.PoolTotalBorrowed)
-			fmt.Printf("   API: %v\n", metricsFromAPI.PoolTotalBorrowed)
+			fmt.Printf("  Node @%d: %v\n", resultEpoch, metricsFromNode.PoolTotalBorrowed)
+			fmt.Printf("   API @%d: %v\n", epoch, metricsFromAPI.PoolTotalBorrowed)
 			fail = true
 		}
 
@@ -76,9 +89,20 @@ var metricsCmd = &cobra.Command{
 			fmt.Printf("@%d: Success, agent count matches: %v\n", epoch, metricsFromAPI.TotalAgentCount)
 		} else {
 			fmt.Printf("@%d: Error, agent count from REST API doesn't match node.\n", epoch)
-			fmt.Printf("  Node: %v\n", metricsFromNode.TotalAgentCount)
-			fmt.Printf("   API: %v\n", metricsFromAPI.TotalAgentCount)
+			fmt.Printf("  Node @%d: %v\n", resultEpoch, metricsFromNode.TotalAgentCount)
+			fmt.Printf("   API @%d: %v\n", epoch, metricsFromAPI.TotalAgentCount)
 			fail = true
+		}
+
+		if checkMinerCount {
+			if metricsFromAPI.TotalMinersCount == minerCountFromNode {
+				fmt.Printf("@%d: Success, miner count matches: %v\n", epoch, minerCountFromNode)
+			} else {
+				fmt.Printf("@%d: Error, miner count from REST API doesn't match node.\n", epoch)
+				fmt.Printf("  Node @%d: %v\n", resultEpoch, minerCountFromNode)
+				fmt.Printf("   API @%d: %v\n", epoch, metricsFromAPI.TotalMinersCount)
+				fail = true
+			}
 		}
 
 		if fail {
@@ -90,4 +114,5 @@ var metricsCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(metricsCmd)
 	metricsCmd.Flags().Uint64("epoch", 0, "Check at epoch")
+	metricsCmd.Flags().Bool("miner-count", false, "Check miner count (slow)")
 }

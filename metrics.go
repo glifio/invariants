@@ -10,7 +10,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/glifio/go-pools/abigen"
-	"github.com/glifio/go-pools/deploy"
 	"github.com/glifio/invariants/singleton"
 )
 
@@ -128,45 +127,61 @@ func getMetrics(ctx context.Context, url string) (*MetricsResult, error) {
 }
 
 // GetMetricsFromNode calls the Lotus node to get the metrics
-func GetMetricsFromNode(ctx context.Context, height uint64) (*MetricsResult, error) {
+func GetMetricsFromNode(ctx context.Context, height uint64) (*MetricsResult, uint64, error) {
 	sdk := singleton.PoolsSDK
+
+	height, err := getNextEpoch(ctx, height)
+	if err != nil {
+		return nil, height, err
+	}
 
 	ethClient, err := sdk.Extern().ConnectEthClient()
 	if err != nil {
-		return nil, err
+		return nil, height, err
 	}
 	defer ethClient.Close()
 
 	blockNumber := big.NewInt(int64(height))
 
-	infinityPool := deploy.ProtoMeta.InfinityPool // FIXME: hardcoded mainnet
+	infinityPool := sdk.Query().InfinityPool()
 
 	poolCaller, err := abigen.NewInfinityPoolCaller(infinityPool, ethClient)
 	if err != nil {
-		return nil, err
+		return nil, height, err
 	}
 
 	totalAssets, err := poolCaller.TotalAssets(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
 	if err != nil {
-		return nil, err
+		return nil, height, err
 	}
 
 	totalBorrowed, err := poolCaller.TotalBorrowed(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
 	if err != nil {
-		return nil, err
+		return nil, height, err
 	}
 
-	agentFactory := deploy.ProtoMeta.AgentFactory // FIXME: hardcoded mainnet
+	agentFactory := sdk.Query().AgentFactory()
 
 	agentFactoryCaller, err := abigen.NewAgentFactoryCaller(agentFactory, ethClient)
 	if err != nil {
-		return nil, err
+		return nil, height, err
 	}
 
 	agentCount, err := agentFactoryCaller.AgentCount(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
 	if err != nil {
-		return nil, err
+		return nil, height, err
 	}
+
+	/*
+		minerRegistry := sdk.Query().MinerRegistry()
+
+		minerRegistryCaller, err := abigen.NewMinerRegistryCaller(minerRegistry, ethClient)
+		if err != nil {
+			return nil, err
+		}
+
+		minerRegistryCaller.MinersCount()
+	*/
 
 	result := MetricsResult{
 		Height:                    height,
@@ -177,11 +192,60 @@ func GetMetricsFromNode(ctx context.Context, height uint64) (*MetricsResult, err
 		PoolExitReserve:           nil, // unused
 		TotalAgentCount:           agentCount.Uint64(),
 		TotalMinerCollaterals:     nil, // unused
-		TotalMinersCount:          0,   // Todo
+		TotalMinersCount:          0,
 		TotalValueLocked:          nil, // unused
 		TotalMinersSectors:        nil, // unused
 		TotalMinerQAP:             nil, // unused
 		TotalMinerRBP:             nil, // unused
 	}
-	return &result, nil
+	return &result, height, nil
+}
+
+// GetMinerCountFromNode calls the Lotus node to get the total miners for all the agents
+func GetMinerCountFromNode(ctx context.Context, height uint64) (uint64, uint64, error) {
+	sdk := singleton.PoolsSDK
+
+	height, err := getNextEpoch(ctx, height)
+	if err != nil {
+		return 0, height, err
+	}
+
+	ethClient, err := sdk.Extern().ConnectEthClient()
+	if err != nil {
+		return 0, height, err
+	}
+	defer ethClient.Close()
+
+	blockNumber := big.NewInt(int64(height))
+
+	agentFactory := sdk.Query().AgentFactory()
+
+	agentFactoryCaller, err := abigen.NewAgentFactoryCaller(agentFactory, ethClient)
+	if err != nil {
+		return 0, height, err
+	}
+
+	agentCount, err := agentFactoryCaller.AgentCount(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
+	if err != nil {
+		return 0, height, err
+	}
+
+	minerRegistry := sdk.Query().MinerRegistry()
+
+	minerRegistryCaller, err := abigen.NewMinerRegistryCaller(minerRegistry, ethClient)
+	if err != nil {
+		return 0, height, err
+	}
+
+	var totalMiners uint64
+	for i := 0; i <= int(agentCount.Uint64()); i++ {
+		count, err := minerRegistryCaller.MinersCount(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber}, big.NewInt(int64(i)))
+		if err != nil {
+			return 0, height, err
+		}
+		fmt.Printf("Agent %d: %d\n", i, count)
+		totalMiners += count.Uint64()
+	}
+
+	return totalMiners, height, nil
 }

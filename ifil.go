@@ -8,8 +8,6 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/filecoin-project/go-state-types/abi"
-	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/glifio/invariants/singleton"
 )
 
@@ -64,10 +62,10 @@ func GetIFILTotalSupplyFromAPI(ctx context.Context, eventsURL string, height uin
 }
 
 // GetIFILTotalSupplyFromNode calls the node to get the iFIL total supply
-func GetIFILTotalSupplyFromNode(ctx context.Context, height uint64) (*IFILTotalSupply, error) {
+func GetIFILTotalSupplyFromNode(ctx context.Context, height uint64) (*IFILTotalSupply, uint64, error) {
 	height, err := getNextEpoch(ctx, height)
 	if err != nil {
-		return nil, err
+		return nil, height, err
 	}
 
 	blockNumber := big.NewInt(int64(height))
@@ -75,23 +73,12 @@ func GetIFILTotalSupplyFromNode(ctx context.Context, height uint64) (*IFILTotalS
 
 	totalSupply, err := q.IFILSupply(ctx, blockNumber)
 	if err != nil {
-		return nil, err
+		return nil, height, err
 	}
 	iFILTotalSupply := IFILTotalSupply{
 		Height:          height,
 		IFILTotalSupply: totalSupply,
 	}
 
-	return &iFILTotalSupply, nil
-}
-
-func getNextEpoch(ctx context.Context, epoch uint64) (uint64, error) {
-	lotus := singleton.Lotus()
-
-	ts, err := lotus.Api.ChainGetTipSetAfterHeight(ctx, abi.ChainEpoch(epoch+1), types.EmptyTSK)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(ts.Height()), nil
+	return &iFILTotalSupply, height, nil
 }
