@@ -238,12 +238,12 @@ func GetMinerCountFromNode(ctx context.Context, height uint64) (uint64, uint64, 
 	}
 
 	var totalMiners uint64
-	for i := 0; i <= int(agentCount.Uint64()); i++ {
+	for i := 1; i <= int(agentCount.Uint64()); i++ {
 		count, err := minerRegistryCaller.MinersCount(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber}, big.NewInt(int64(i)))
 		if err != nil {
 			return 0, height, err
 		}
-		fmt.Printf("Agent %d: %d\n", i, count)
+		// fmt.Printf("Agent %d: %d\n", i, count)
 		totalMiners += count.Uint64()
 	}
 
