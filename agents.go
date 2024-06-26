@@ -7,8 +7,10 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/glifio/invariants/singleton"
 )
 
 type AgentJSON struct {
@@ -262,4 +264,109 @@ func GetAgentTransactionsFromAPI(ctx context.Context, eventsURL string, agentID 
 	}
 
 	return txs, nil
+}
+
+type AgentEconJSON struct {
+	Id              uint64 `json:"id"`
+	Assets          string `json:"assets"`
+	Liability       string `json:"liability"`
+	Equity          string `json:"equity"`
+	CollateralValue string `json:"collateralValue"`
+	BorrowNow       string `json:"borrowNow"`
+	BorrowMax       string `json:"borrowMax"`
+	Dte             string `json:"dte"`
+}
+
+type AgentEconResult struct {
+	Id              uint64
+	Assets          *big.Int
+	Liability       *big.Int
+	Equity          *big.Int
+	CollateralValue *big.Int
+	BorrowNow       *big.Int
+	BorrowMax       *big.Int
+	Dte             float64
+}
+
+// GetAgentEconFromAPI calls the REST API to get the latest econ values for an agent
+func GetAgentEconFromAPI(ctx context.Context, eventsURL string, agentID uint64) (*AgentEconResult, error) {
+	url := fmt.Sprintf("%s/agent/%d/econ", eventsURL, agentID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		log.Println("error creating request:", err)
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println("error getting response:", err)
+		return nil, err
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bad http status: %v", res.StatusCode)
+	}
+
+	var response AgentEconJSON
+
+	defer res.Body.Close()
+
+	err = json.NewDecoder(res.Body).Decode(&response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JSON response: %v", err)
+	}
+
+	assets := big.NewInt(0)
+	assets.SetString(response.Assets, 10)
+	liability := big.NewInt(0)
+	liability.SetString(response.Liability, 10)
+	equity := big.NewInt(0)
+	equity.SetString(response.Equity, 10)
+	collateralValue := big.NewInt(0)
+	collateralValue.SetString(response.CollateralValue, 10)
+	borrowNow := big.NewInt(0)
+	borrowNow.SetString(response.BorrowNow, 10)
+	borrowMax := big.NewInt(0)
+	borrowMax.SetString(response.BorrowMax, 10)
+	dte, err := strconv.ParseFloat(response.Dte, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	result := AgentEconResult{
+		Id:              response.Id,
+		Assets:          assets,
+		Liability:       liability,
+		Equity:          equity,
+		CollateralValue: collateralValue,
+		BorrowNow:       borrowNow,
+		BorrowMax:       borrowMax,
+		Dte:             dte,
+	}
+
+	return &result, nil
+}
+
+// GetAgentEconFromNode calls the node to get the econ values from the node
+func GetAgentEconFromNode(ctx context.Context, address common.Address, height uint64) (*AgentEconResult, uint64, error) {
+	height, err := getNextEpoch(ctx, height)
+	if err != nil {
+		return nil, height, err
+	}
+
+	blockNumber := big.NewInt(int64(height))
+	q := singleton.PoolsSDK.Query()
+
+	principal, err := q.AgentPrincipal(ctx, address, blockNumber)
+	if err != nil {
+		return nil, height, err
+	}
+
+	result := AgentEconResult{
+		Liability: principal,
+	}
+
+	return &result, height, nil
 }
