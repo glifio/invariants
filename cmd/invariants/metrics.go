@@ -38,7 +38,7 @@ var metricsCmd = &cobra.Command{
 			if err != nil {
 				log.Fatal(err)
 			}
-			epoch = epoch - 2
+			epoch = epoch - 3
 		}
 
 		checkMinerCount, err := cmd.Flags().GetBool("miner-count")
