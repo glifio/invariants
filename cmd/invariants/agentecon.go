@@ -121,7 +121,7 @@ func checkAgentEcon(ctx context.Context, eventsURL string, epoch uint64, agent *
 		if err != nil {
 			return err
 		}
-		epoch = epoch - 2
+		epoch = epoch - 3
 	}
 
 	econAPI, err := invariants.GetAgentEconFromAPI(ctx, eventsURL, agentID)

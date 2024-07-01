@@ -50,19 +50,16 @@ var metricsCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		// fmt.Printf("Jim rest %+v\n", metricsFromAPI)
 		metricsFromNode, resultEpoch, err := invariants.GetMetricsFromNode(ctx, epoch)
 		if err != nil {
 			log.Fatal(err)
 		}
-		// fmt.Printf("Jim chain %+v\n", metricsFromNode)
 		var minerCountFromNode uint64
 		if checkMinerCount {
 			minerCountFromNode, resultEpoch, err = invariants.GetMinerCountFromNode(ctx, epoch)
 			if err != nil {
 				log.Fatal(err)
 			}
-			// fmt.Printf("Jim minerCount %+v\n", minerCountFromNode)
 		}
 
 		fail := false
