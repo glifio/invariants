@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/big"
 	"time"
 
 	"github.com/filecoin-project/go-address"
@@ -168,16 +169,17 @@ func checkTerminations(
 
 	// Quick
 	start := time.Now()
-	quick, err := terminate.PreviewTerminateSectorsQuick(ctx, &lotus.Api, miner, ts)
+	quickResult, err := terminate.PreviewTerminateSectorsQuick(ctx, &lotus.Api, miner, ts)
 	if err != nil {
 		return err
 	}
 	elapsed := time.Since(start).Seconds()
 	fmt.Printf("%sMiner %s%v @%d: Quick method: %0.3f FIL (%d of %d sectors, offchain, %0.1fs)\n",
-		prefix, countStr, miner, epoch, util.ToFIL(quick.SectorStats.TerminationPenalty),
-		quick.SectorsTerminated, quick.SectorsCount, elapsed)
+		prefix, countStr, miner, epoch, util.ToFIL(quickResult.SectorStats.TerminationPenalty),
+		quickResult.SectorsTerminated, quickResult.SectorsCount, elapsed)
 
 	// Sampled, onchain
+	var sampledResult *terminate.PreviewTerminateSectorsReturn
 	errorCh := make(chan error)
 	// progressCh := make(chan *terminate.PreviewTerminateSectorsProgress)
 	resultCh := make(chan *terminate.PreviewTerminateSectorsReturn)
@@ -201,11 +203,11 @@ loopSampled:
 	for {
 		select {
 		case result := <-resultCh:
-			sampled := result
+			sampledResult = result
 			elapsed = time.Since(start).Seconds()
 			fmt.Printf("%sMiner %s%v @%d: Sampled method: %0.3f FIL (%d of %d sectors, onchain, %0.1fs)\n",
-				prefix, countStr, miner, epoch, util.ToFIL(sampled.SectorStats.TerminationPenalty),
-				sampled.SectorsTerminated, sampled.SectorsCount, elapsed)
+				prefix, countStr, miner, epoch, util.ToFIL(sampledResult.SectorStats.TerminationPenalty),
+				sampledResult.SectorsTerminated, sampledResult.SectorsCount, elapsed)
 			break loopSampled
 
 			/*
@@ -219,6 +221,7 @@ loopSampled:
 	}
 
 	// Full
+	var fullResult *terminate.PreviewTerminateSectorsReturn
 	errorCh = make(chan error)
 	// progressCh = make(chan *terminate.PreviewTerminateSectorsProgress)
 	resultCh = make(chan *terminate.PreviewTerminateSectorsReturn)
@@ -230,11 +233,11 @@ loopFull:
 	for {
 		select {
 		case result := <-resultCh:
-			full := result
+			fullResult = result
 			elapsedDuration := time.Since(start).Round(time.Second)
 			fmt.Printf("%sMiner %s%v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %s)\n",
-				prefix, countStr, miner, epoch, util.ToFIL(full.SectorStats.TerminationPenalty),
-				full.SectorsTerminated, full.SectorsCount, elapsedDuration)
+				prefix, countStr, miner, epoch, util.ToFIL(fullResult.SectorStats.TerminationPenalty),
+				fullResult.SectorsTerminated, fullResult.SectorsCount, elapsedDuration)
 			break loopFull
 
 			/*
@@ -252,5 +255,38 @@ loopFull:
 			prefix, countStr, miner, util.ToFIL(minerDetails.TerminationPenalty))
 	}
 
+	// Variances
+	fullVsQuick := new(big.Int).Sub(
+		fullResult.SectorStats.TerminationPenalty,
+		quickResult.SectorStats.TerminationPenalty,
+	)
+	if fullVsQuick.Sign() == 0 {
+		fmt.Printf("%sMiner %s%v: Quick method and Full method agree.",
+			prefix, countStr, miner)
+	} else if fullVsQuick.Sign() == -1 {
+		pct := getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
+		fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s)\n",
+			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct)
+	} else {
+		pct := getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
+		fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s)\n",
+			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct)
+	}
+
 	return nil
+}
+
+func getPct(fullVsQuick *big.Int, fullBig *big.Int, agent *invariants.Agent) string {
+	fullVsQuick = new(big.Int).Abs(fullVsQuick)
+	diff, _ := fullVsQuick.Float64()
+	full, _ := fullBig.Float64()
+	pct := "n/a"
+	if full > 0 {
+		pct = fmt.Sprintf("%0.3f%%", diff/full)
+	}
+	if agent != nil && agent.PrincipalBalance.Sign() == 1 {
+		loaned, _ := agent.PrincipalBalance.Float64()
+		pct += fmt.Sprintf(", %0.3f%% of agent principal", diff/loaned)
+	}
+	return pct
 }
