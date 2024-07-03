@@ -122,6 +122,8 @@ func checkTerminations(ctx context.Context, epoch uint64, miner address.Address)
 	if err != nil {
 		return err
 	}
+
+	// Quick
 	start := time.Now()
 	quick, err := terminate.PreviewTerminateSectorsQuick(ctx, &lotus.Api, miner, ts)
 	if err != nil {
@@ -131,18 +133,55 @@ func checkTerminations(ctx context.Context, epoch uint64, miner address.Address)
 	fmt.Printf("Miner %v @%d: Quick method: %0.3f FIL (%d of %d sectors, offchain, %0.1fs)\n", miner, epoch,
 		util.ToFIL(quick.SectorStats.TerminationPenalty), quick.SectorsTerminated, quick.SectorsCount, elapsed)
 
+	// Sampled, onchain
 	errorCh := make(chan error)
 	// progressCh := make(chan *terminate.PreviewTerminateSectorsProgress)
 	resultCh := make(chan *terminate.PreviewTerminateSectorsReturn)
-
+	epochStr := fmt.Sprintf("@%d", epoch)
 	start = time.Now()
-	// epochStr := fmt.Sprintf("@%d", epoch)
-	epochStr := "@head"
-	// fmt.Sprintf("@%d", epoch)
+	go terminate.PreviewTerminateSectors(
+		ctx,
+		&lotus.Api,
+		miner,
+		epochStr,
+		0,            // vmHeight
+		40,           // batchSize
+		270000000000, // gasLimit
+		true,         // useSampling
+		true,         // optimize
+		false,        // offchain
+		21,           // maxPartitions
+		errorCh, nil /* progressCh */, resultCh)
+
+loopSampled:
+	for {
+		select {
+		case result := <-resultCh:
+			sampled := result
+			elapsed = time.Since(start).Seconds()
+			fmt.Printf("Miner %v @%d: Sampled method: %0.3f FIL (%d of %d sectors, onchain, %0.1fs)\n", miner, epoch,
+				util.ToFIL(sampled.SectorStats.TerminationPenalty), sampled.SectorsTerminated, sampled.SectorsCount, elapsed)
+			break loopSampled
+
+			/*
+				case progress := <-progressCh:
+					fmt.Printf("Progress: %+v\n", progress)
+			*/
+
+		case err := <-errorCh:
+			log.Fatal(err)
+		}
+	}
+
+	// Full
+	errorCh = make(chan error)
+	// progressCh = make(chan *terminate.PreviewTerminateSectorsProgress)
+	resultCh = make(chan *terminate.PreviewTerminateSectorsReturn)
+	start = time.Now()
 	go terminate.PreviewTerminateSectors(ctx, &lotus.Api, miner, epochStr, 0, 0, 0,
 		false, false, false, 0, errorCh, nil /* progressCh */, resultCh)
 
-loop:
+loopFull:
 	for {
 		select {
 		case result := <-resultCh:
@@ -150,7 +189,7 @@ loop:
 			elapsed = time.Since(start).Seconds()
 			fmt.Printf("Miner %v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %0.1fs)\n", miner, epoch,
 				util.ToFIL(full.SectorStats.TerminationPenalty), full.SectorsTerminated, full.SectorsCount, elapsed)
-			break loop
+			break loopFull
 
 			/*
 				case progress := <-progressCh:
