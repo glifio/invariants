@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/filecoin-project/go-address"
 	"github.com/glifio/invariants/singleton"
 )
 
@@ -369,4 +370,110 @@ func GetAgentEconFromNode(ctx context.Context, address common.Address, height ui
 	}
 
 	return &result, height, nil
+}
+
+type MinerDetailsJSON struct {
+	Miner                  uint64          `json:"miner"`
+	AgentId                uint64          `json:"agentId"`
+	Actions                uint16          `json:"actions"`
+	MinerAddr              address.Address `json:"minerAddr"`
+	AvailableBalance       string          `json:"availableBalance"`
+	Equity                 string          `json:"equity"`
+	EstimatedWeeklyRewards string          `json:"estimatedWeeklyRewards"`
+	QAP                    string          `json:"qap"`
+	RBP                    string          `json:"rbp"`
+	SlashingRisk           string          `json:"slashingRisk"`
+	LiveSectors            string          `json:"liveSectors"`
+	FaultySectors          string          `json:"faultySectors"`
+	RecoveringSectors      string          `json:"recoveringSectors"`
+	Ratio                  string          `json:"ratio"`
+	TerminationPenalty     string          `json:"terminationPenalty"`
+	LiquidationValue       string          `json:"liquidationValue"`
+}
+
+type MinerDetailsResult struct {
+	Miner                  uint64
+	AgentId                uint64
+	Actions                uint16
+	MinerAddr              address.Address
+	AvailableBalance       *big.Int
+	Equity                 *big.Int
+	EstimatedWeeklyRewards *big.Int
+	QAP                    *big.Int
+	RBP                    *big.Int
+	SlashingRisk           float64
+	LiveSectors            uint64
+	FaultySectors          uint64
+	RecoveringSectors      uint64
+	Ratio                  float64
+	TerminationPenalty     *big.Int
+	LiquidationValue       *big.Int
+}
+
+// GetAgentMinersFromAPI calls the REST API to get the miners for an agent
+func GetAgentMinersAPI(ctx context.Context, eventsURL string, agentID uint64) ([]MinerDetailsResult, error) {
+	url := fmt.Sprintf("%s/agent/%d/miners", eventsURL, agentID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		log.Println("error creating request:", err)
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println("error getting response:", err)
+		return nil, err
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bad http status: %v", res.StatusCode)
+	}
+
+	var response []MinerDetailsJSON
+
+	defer res.Body.Close()
+
+	err = json.NewDecoder(res.Body).Decode(&response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JSON response: %v", err)
+	}
+
+	results := make([]MinerDetailsResult, 0)
+	fmt.Printf("Jim response: %+v\n", response)
+	for _, minerDetail := range response {
+		availableBalance, _ := new(big.Int).SetString(minerDetail.AvailableBalance, 10)
+		equity, _ := new(big.Int).SetString(minerDetail.Equity, 10)
+		estimatedWeeklyRewards, _ := new(big.Int).SetString(minerDetail.EstimatedWeeklyRewards, 10)
+		qap, _ := new(big.Int).SetString(minerDetail.QAP, 10)
+		rbp, _ := new(big.Int).SetString(minerDetail.RBP, 10)
+		slashingRisk, _ := strconv.ParseFloat(minerDetail.SlashingRisk, 64)
+		liveSectors, _ := strconv.ParseUint(minerDetail.LiveSectors, 10, 64)
+		faultySectors, _ := strconv.ParseUint(minerDetail.FaultySectors, 10, 64)
+		recoveringSectors, _ := strconv.ParseUint(minerDetail.RecoveringSectors, 10, 64)
+		ratio, _ := strconv.ParseFloat(minerDetail.Ratio, 64)
+		terminationPenalty, _ := new(big.Int).SetString(minerDetail.TerminationPenalty, 10)
+		liquidationValue, _ := new(big.Int).SetString(minerDetail.LiquidationValue, 10)
+		results = append(results, MinerDetailsResult{
+			Miner:                  minerDetail.Miner,
+			AgentId:                minerDetail.AgentId,
+			Actions:                minerDetail.Actions,
+			MinerAddr:              minerDetail.MinerAddr,
+			AvailableBalance:       availableBalance,
+			Equity:                 equity,
+			EstimatedWeeklyRewards: estimatedWeeklyRewards,
+			QAP:                    qap,
+			RBP:                    rbp,
+			SlashingRisk:           slashingRisk,
+			LiveSectors:            liveSectors,
+			FaultySectors:          faultySectors,
+			RecoveringSectors:      recoveringSectors,
+			Ratio:                  ratio,
+			TerminationPenalty:     terminationPenalty,
+			LiquidationValue:       liquidationValue,
+		})
+	}
+
+	return results, nil
 }

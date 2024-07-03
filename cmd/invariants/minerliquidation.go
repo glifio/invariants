@@ -11,19 +11,21 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/glifio/go-pools/terminate"
 	"github.com/glifio/go-pools/util"
+	"github.com/glifio/invariants"
 	"github.com/glifio/invariants/singleton"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // minerLiquidationCmd represents the minerLiquidation command
 var minerLiquidationCmd = &cobra.Command{
-	Use:   "miner-liquidation [miner-id] [--agent <id>] [--all] [--random <num>] [--epoch <epoch>]",
+	Use:   "miner-liquidation [miner-id] [--agent <id>] [--random <num>] [--epoch <epoch>]",
 	Short: "Compare liquidation values computed using various methods",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 
-		// eventsURL := viper.GetString("events_api")
+		eventsURL := viper.GetString("events_api")
 
 		err := initSingleton(ctx)
 		if err != nil {
@@ -43,63 +45,89 @@ var minerLiquidationCmd = &cobra.Command{
 			epoch = epoch - 3
 		}
 
+		agentID, err := cmd.Flags().GetUint64("agent")
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		randomMiners, err := cmd.Flags().GetUint64("random")
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		if randomMiners == 0 {
-			if len(args) != 1 {
-				cmd.Usage()
-				return
-			}
-
-			minerID := args[0]
-
-			miner, err := address.NewFromString(minerID)
+		if agentID != 0 {
+			agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
 			if err != nil {
 				log.Fatal(err)
 			}
+			fmt.Printf("Agent: %+v\n", agent)
 
-			err = checkTerminations(ctx, epoch, miner)
+			miners, err := invariants.GetAgentMinersAPI(ctx, eventsURL, agentID)
 			if err != nil {
 				log.Fatal(err)
 			}
-			/*
-				agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
+			for i, miner := range miners {
+				fmt.Printf("Miner: %d %+v\n", i+1, miner)
+				err = checkTerminations(ctx, epoch, miner.MinerAddr)
 				if err != nil {
 					log.Fatal(err)
 				}
+			}
 
-				err = checkAgentEcon(ctx, eventsURL, epoch, agent)
-				if err != nil {
-					log.Fatal(err)
-				}
-			*/
 		} else {
-			if len(args) != 0 {
-				cmd.Usage()
-				return
-			}
+			if randomMiners == 0 {
+				if len(args) != 1 {
+					cmd.Usage()
+					return
+				}
 
-			if randomMiners > 0 {
+				minerID := args[0]
+
+				miner, err := address.NewFromString(minerID)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				err = checkTerminations(ctx, epoch, miner)
+				if err != nil {
+					log.Fatal(err)
+				}
 				/*
-					if int(randomAgents) > len(agents) {
-						randomAgents = uint64(len(agents))
+					agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
+					if err != nil {
+						log.Fatal(err)
 					}
-					rand.Shuffle(len(agents), func(i, j int) {
-						agents[i], agents[j] = agents[j], agents[i]
-					})
-					for i := 0; i < int(randomAgents); i++ {
-						agent := agents[i]
-						err := checkAgentEcon(ctx, eventsURL, epoch, &agent)
-						if err != nil {
-							log.Fatal(err)
-						}
+
+					err = checkAgentEcon(ctx, eventsURL, epoch, agent)
+					if err != nil {
+						log.Fatal(err)
 					}
 				*/
 			} else {
-				cmd.Usage()
+				if len(args) != 0 {
+					cmd.Usage()
+					return
+				}
+
+				if randomMiners > 0 {
+					/*
+						if int(randomAgents) > len(agents) {
+							randomAgents = uint64(len(agents))
+						}
+						rand.Shuffle(len(agents), func(i, j int) {
+							agents[i], agents[j] = agents[j], agents[i]
+						})
+						for i := 0; i < int(randomAgents); i++ {
+							agent := agents[i]
+							err := checkAgentEcon(ctx, eventsURL, epoch, &agent)
+							if err != nil {
+								log.Fatal(err)
+							}
+						}
+					*/
+				} else {
+					cmd.Usage()
+				}
 			}
 		}
 	},
@@ -110,7 +138,6 @@ func init() {
 	minerLiquidationCmd.Flags().Uint64("epoch", 0, "Check at epoch")
 	minerLiquidationCmd.Flags().Uint64("random", 0, "Randomly select miners")
 	minerLiquidationCmd.Flags().Uint64("agent", 0, "Select only miners for a specific agent")
-	minerLiquidationCmd.Flags().Bool("all", false, "Select all miners for a specific agent")
 }
 
 func checkTerminations(ctx context.Context, epoch uint64, miner address.Address) error {
