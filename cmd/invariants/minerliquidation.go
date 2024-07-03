@@ -63,26 +63,28 @@ var minerLiquidationCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		if agentID != 0 {
-			agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf("Agent %v @%d: %d miners, %0.3f FIL borrowed (via API)\n",
-				agent.ID, agent.Height, agent.Miners, util.ToFIL(agent.PrincipalBalance))
+		allAgents, err := cmd.Flags().GetBool("all-agents")
+		if err != nil {
+			log.Fatal(err)
+		}
 
-			miners, err := invariants.GetAgentMinersFromAPI(ctx, eventsURL, agentID)
+		if allAgents {
+			agents, err := invariants.GetAgentsFromAPI(ctx, eventsURL)
 			if err != nil {
 				log.Fatal(err)
 			}
-			for i, miner := range miners {
-				countStr := fmt.Sprintf("%d/%d", i+1, len(miners))
-				err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner, countStr, showProgress)
+
+			for _, agent := range agents {
+				err := checkTerminationsForAgent(ctx, eventsURL, agent.ID, epoch, showProgress)
 				if err != nil {
 					log.Fatal(err)
 				}
 			}
-
+		} else if agentID != 0 {
+			err := checkTerminationsForAgent(ctx, eventsURL, agentID, epoch, showProgress)
+			if err != nil {
+				log.Fatal(err)
+			}
 		} else {
 			if randomMiners == 0 {
 				if len(args) != 1 {
@@ -101,17 +103,6 @@ var minerLiquidationCmd = &cobra.Command{
 				if err != nil {
 					log.Fatal(err)
 				}
-				/*
-					agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
-					if err != nil {
-						log.Fatal(err)
-					}
-
-					err = checkAgentEcon(ctx, eventsURL, epoch, agent)
-					if err != nil {
-						log.Fatal(err)
-					}
-				*/
 			} else {
 				if len(args) != 0 {
 					cmd.Usage()
@@ -119,6 +110,7 @@ var minerLiquidationCmd = &cobra.Command{
 				}
 
 				if randomMiners > 0 {
+					log.Fatal("Not implemented")
 					/*
 						if int(randomAgents) > len(agents) {
 							randomAgents = uint64(len(agents))
@@ -147,7 +139,36 @@ func init() {
 	minerLiquidationCmd.Flags().Uint64("epoch", 0, "Check at epoch")
 	minerLiquidationCmd.Flags().Uint64("random", 0, "Randomly select miners")
 	minerLiquidationCmd.Flags().Uint64("agent", 0, "Select only miners for a specific agent")
+	minerLiquidationCmd.Flags().Bool("all-agents", false, "Loop over all agents")
 	minerLiquidationCmd.Flags().Bool("progress", true, "Show progress bar")
+}
+
+func checkTerminationsForAgent(
+	ctx context.Context,
+	eventsURL string,
+	agentID uint64,
+	epoch uint64,
+	showProgress bool,
+) error {
+	agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Agent %v @%d: %d miners, %0.3f FIL borrowed (via API)\n",
+		agent.ID, agent.Height, agent.Miners, util.ToFIL(agent.PrincipalBalance))
+
+	miners, err := invariants.GetAgentMinersFromAPI(ctx, eventsURL, agentID)
+	if err != nil {
+		return err
+	}
+	for i, miner := range miners {
+		countStr := fmt.Sprintf("%d/%d", i+1, len(miners))
+		err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner, countStr, showProgress)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func checkTerminations(
@@ -311,6 +332,7 @@ loopFull:
 		fmt.Printf("%sMiner %s%v: Quick method and Full method agree.",
 			prefix, countStr, miner)
 	} else if fullVsQuick.Sign() == -1 {
+		fullVsQuick = new(big.Int).Abs(fullVsQuick)
 		pct := getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
 		fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s)\n",
 			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct)
