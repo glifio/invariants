@@ -60,15 +60,16 @@ var minerLiquidationCmd = &cobra.Command{
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("Agent: %+v\n", agent)
+			fmt.Printf("Agent %v @%d: %d miners, %0.3f FIL borrowed (via API)\n",
+				agent.ID, agent.Height, agent.Miners, util.ToFIL(agent.PrincipalBalance))
 
-			miners, err := invariants.GetAgentMinersAPI(ctx, eventsURL, agentID)
+			miners, err := invariants.GetAgentMinersFromAPI(ctx, eventsURL, agentID)
 			if err != nil {
 				log.Fatal(err)
 			}
 			for i, miner := range miners {
-				fmt.Printf("Miner: %d %+v\n", i+1, miner)
-				err = checkTerminations(ctx, epoch, miner.MinerAddr)
+				countStr := fmt.Sprintf("%d/%d", i+1, len(miners))
+				err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner, countStr)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -88,7 +89,7 @@ var minerLiquidationCmd = &cobra.Command{
 					log.Fatal(err)
 				}
 
-				err = checkTerminations(ctx, epoch, miner)
+				err = checkTerminations(ctx, epoch, miner, nil, nil, "")
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -140,8 +141,23 @@ func init() {
 	minerLiquidationCmd.Flags().Uint64("agent", 0, "Select only miners for a specific agent")
 }
 
-func checkTerminations(ctx context.Context, epoch uint64, miner address.Address) error {
-	fmt.Printf("Checking termination burn for miner %v @%d:\n", miner, epoch)
+func checkTerminations(
+	ctx context.Context,
+	epoch uint64,
+	miner address.Address,
+	agent *invariants.Agent,
+	minerDetails *invariants.MinerDetailsResult,
+	countStr string,
+) error {
+	if countStr != "" {
+		countStr += " "
+	}
+	prefix := ""
+	if agent == nil {
+		fmt.Printf("Checking termination burn for miner %v @%d:\n", miner, epoch)
+	} else {
+		prefix = fmt.Sprintf("  Agent %d: ", agent.ID)
+	}
 
 	lotus := singleton.Lotus()
 
@@ -157,8 +173,9 @@ func checkTerminations(ctx context.Context, epoch uint64, miner address.Address)
 		return err
 	}
 	elapsed := time.Since(start).Seconds()
-	fmt.Printf("Miner %v @%d: Quick method: %0.3f FIL (%d of %d sectors, offchain, %0.1fs)\n", miner, epoch,
-		util.ToFIL(quick.SectorStats.TerminationPenalty), quick.SectorsTerminated, quick.SectorsCount, elapsed)
+	fmt.Printf("%sMiner %s%v @%d: Quick method: %0.3f FIL (%d of %d sectors, offchain, %0.1fs)\n",
+		prefix, countStr, miner, epoch, util.ToFIL(quick.SectorStats.TerminationPenalty),
+		quick.SectorsTerminated, quick.SectorsCount, elapsed)
 
 	// Sampled, onchain
 	errorCh := make(chan error)
@@ -186,8 +203,9 @@ loopSampled:
 		case result := <-resultCh:
 			sampled := result
 			elapsed = time.Since(start).Seconds()
-			fmt.Printf("Miner %v @%d: Sampled method: %0.3f FIL (%d of %d sectors, onchain, %0.1fs)\n", miner, epoch,
-				util.ToFIL(sampled.SectorStats.TerminationPenalty), sampled.SectorsTerminated, sampled.SectorsCount, elapsed)
+			fmt.Printf("%sMiner %s%v @%d: Sampled method: %0.3f FIL (%d of %d sectors, onchain, %0.1fs)\n",
+				prefix, countStr, miner, epoch, util.ToFIL(sampled.SectorStats.TerminationPenalty),
+				sampled.SectorsTerminated, sampled.SectorsCount, elapsed)
 			break loopSampled
 
 			/*
@@ -213,9 +231,10 @@ loopFull:
 		select {
 		case result := <-resultCh:
 			full := result
-			elapsed = time.Since(start).Seconds()
-			fmt.Printf("Miner %v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %0.1fs)\n", miner, epoch,
-				util.ToFIL(full.SectorStats.TerminationPenalty), full.SectorsTerminated, full.SectorsCount, elapsed)
+			elapsedDuration := time.Since(start).Round(time.Second)
+			fmt.Printf("%sMiner %s%v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %s)\n",
+				prefix, countStr, miner, epoch, util.ToFIL(full.SectorStats.TerminationPenalty),
+				full.SectorsTerminated, full.SectorsCount, elapsedDuration)
 			break loopFull
 
 			/*
@@ -226,6 +245,11 @@ loopFull:
 		case err := <-errorCh:
 			log.Fatal(err)
 		}
+	}
+
+	if minerDetails != nil {
+		fmt.Printf("%sMiner %s%v: Termination penalty via API: %0.3f FIL\n",
+			prefix, countStr, miner, util.ToFIL(minerDetails.TerminationPenalty))
 	}
 
 	return nil

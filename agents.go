@@ -411,7 +411,7 @@ type MinerDetailsResult struct {
 }
 
 // GetAgentMinersFromAPI calls the REST API to get the miners for an agent
-func GetAgentMinersAPI(ctx context.Context, eventsURL string, agentID uint64) ([]MinerDetailsResult, error) {
+func GetAgentMinersFromAPI(ctx context.Context, eventsURL string, agentID uint64) ([]MinerDetailsResult, error) {
 	url := fmt.Sprintf("%s/agent/%d/miners", eventsURL, agentID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -441,7 +441,6 @@ func GetAgentMinersAPI(ctx context.Context, eventsURL string, agentID uint64) ([
 	}
 
 	results := make([]MinerDetailsResult, 0)
-	fmt.Printf("Jim response: %+v\n", response)
 	for _, minerDetail := range response {
 		availableBalance, _ := new(big.Int).SetString(minerDetail.AvailableBalance, 10)
 		equity, _ := new(big.Int).SetString(minerDetail.Equity, 10)
