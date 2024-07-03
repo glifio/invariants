@@ -201,9 +201,10 @@ github.com/gbrlsnchs/jwt/v3 v3.0.1 h1:lbUmgAKpxnClrKloyIwpxm4OuWeDl5wLk52G91ODPw
 github.com/gbrlsnchs/jwt/v3 v3.0.1/go.mod h1:AncDcjXz18xetI3A6STfXq2w+LuTx8pQ8bGEwRN8zVM=
 github.com/getsentry/sentry-go v0.18.0 h1:MtBW5H9QgdcJabtZcuJG80BMOwaBpkRDZkxRkNC1sN0=
 github.com/getsentry/sentry-go v0.18.0/go.mod h1:Kgon4Mby+FJ7ZWHFUAZgVaIa8sxHtnRJRLTXZr51aKQ=
-github.com/glifio/go-pools v1.0.2 h1:rmScJenDpmlL6YL2OltlJm57upPlsK0iawmHdtEqwM0=
-github.com/glifio/go-pools v1.0.2/go.mod h1:lMmZYESrwKs3VcLE/0ce3IGwekyN+H38qAOFFFTBQIc=
-github.com/glifio/go-secp256k1 v0.0.1/go.mod h1:AuM499x3qhpTvNyjqfLBkeYlEYQxD0ZB7YsYliALcPs=
+github.com/glifio/go-pools v1.0.3-0.20240628164543-cc66b24cbc9c h1:+fI3pkkJW++clSuH3m/WOy62nAdgPhgJNx6rzb9ZXHE=
+github.com/glifio/go-pools v1.0.3-0.20240628164543-cc66b24cbc9c/go.mod h1:lMmZYESrwKs3VcLE/0ce3IGwekyN+H38qAOFFFTBQIc=
+github.com/glifio/go-pools v1.0.3-0.20240703020805-d6a2fd5219d9 h1:6yKXZmxq3gMH4jL8CS8V3LOeuwI5GEKoMXPGcYasn5c=
+github.com/glifio/go-pools v1.0.3-0.20240703020805-d6a2fd5219d9/go.mod h1:lMmZYESrwKs3VcLE/0ce3IGwekyN+H38qAOFFFTBQIc=
 github.com/go-check/check v0.0.0-20180628173108-788fd7840127/go.mod h1:9ES+weclKsC9YodN5RgxqK/VD9HM9JsCSh7rNhMZE98=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.1 h1:pKouT5E8xu9zeFC39JXRDukb6JFQPXM5p5I91188VAQ=
@@ -439,6 +440,7 @@ github.com/ipni/go-libipni v0.0.8 h1:0wLfZRSBG84swmZwmaLKul/iB/FlBkkl9ZcR1ub+Z+w
 github.com/ipni/go-libipni v0.0.8/go.mod h1:paYP9U4N3/vOzGCuN9kU972vtvw9JUcQjOKyiCFGwRk=
 github.com/ipni/index-provider v0.12.0 h1:R3F6dxxKNv4XkE4GJZNLOG0bDEbBQ/S5iztXwSD8jhQ=
 github.com/ipni/index-provider v0.12.0/go.mod h1:GhyrADJp7n06fqoc1djzkvL4buZYHzV8SoWrlxEo5F4=
+github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52/go.mod h1:fdg+/X9Gg4AsAIzWpEHwnqd+QY3b7lajxyjE1m4hkq4=
 github.com/jackpal/gateway v1.0.5/go.mod h1:lTpwd4ACLXmpyiCTRtfiNyVnUmqT9RivzCDQetPfnjA=
 github.com/jackpal/go-nat-pmp v1.0.1/go.mod h1:QPH045xvCAeXUZOxsnwmrtiCoxIr9eob+4orBN1SBKc=
 github.com/jackpal/go-nat-pmp v1.0.2 h1:KzKSgb7qkJvOUTqYl9/Hg/me3pWgBmERKrTGD7BdWus=

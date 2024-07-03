@@ -131,5 +131,36 @@ func checkTerminations(ctx context.Context, epoch uint64, miner address.Address)
 	fmt.Printf("Miner %v @%d: Quick method: %0.3f FIL (%d of %d sectors, offchain, %0.1fs)\n", miner, epoch,
 		util.ToFIL(quick.SectorStats.TerminationPenalty), quick.SectorsTerminated, quick.SectorsCount, elapsed)
 
+	errorCh := make(chan error)
+	// progressCh := make(chan *terminate.PreviewTerminateSectorsProgress)
+	resultCh := make(chan *terminate.PreviewTerminateSectorsReturn)
+
+	start = time.Now()
+	// epochStr := fmt.Sprintf("@%d", epoch)
+	epochStr := "@head"
+	// fmt.Sprintf("@%d", epoch)
+	go terminate.PreviewTerminateSectors(ctx, &lotus.Api, miner, epochStr, 0, 0, 0,
+		false, false, false, 0, errorCh, nil /* progressCh */, resultCh)
+
+loop:
+	for {
+		select {
+		case result := <-resultCh:
+			full := result
+			elapsed = time.Since(start).Seconds()
+			fmt.Printf("Miner %v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %0.1fs)\n", miner, epoch,
+				util.ToFIL(full.SectorStats.TerminationPenalty), full.SectorsTerminated, full.SectorsCount, elapsed)
+			break loop
+
+			/*
+				case progress := <-progressCh:
+					fmt.Printf("Progress: %+v\n", progress)
+			*/
+
+		case err := <-errorCh:
+			log.Fatal(err)
+		}
+	}
+
 	return nil
 }

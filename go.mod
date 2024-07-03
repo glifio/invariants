@@ -2,11 +2,12 @@ module github.com/glifio/invariants
 
 go 1.22.0
 
-replace github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52 => github.com/glifio/go-secp256k1 v0.0.1
-
 require (
 	github.com/ethereum/go-ethereum v1.12.0
+	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-jsonrpc v0.3.1
+	github.com/filecoin-project/go-state-types v0.13.3
+	github.com/filecoin-project/lotus v1.26.3-0.20240424142548-f907354300ba
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.18.2
 )
@@ -26,7 +27,6 @@ require (
 	github.com/daaku/go.zipexe v1.0.2 // indirect
 	github.com/deckarep/golang-set/v2 v2.1.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
-	github.com/filecoin-project/go-address v1.1.0 // indirect
 	github.com/filecoin-project/go-amt-ipld/v2 v2.1.0 // indirect
 	github.com/filecoin-project/go-amt-ipld/v3 v3.1.0 // indirect
 	github.com/filecoin-project/go-amt-ipld/v4 v4.3.0 // indirect
@@ -39,7 +39,6 @@ require (
 	github.com/filecoin-project/go-hamt-ipld/v2 v2.0.0 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v3 v3.1.0 // indirect
 	github.com/filecoin-project/go-padreader v0.0.1 // indirect
-	github.com/filecoin-project/go-state-types v0.13.3 // indirect
 	github.com/filecoin-project/go-statemachine v1.0.3 // indirect
 	github.com/filecoin-project/go-statestore v0.2.0 // indirect
 	github.com/filecoin-project/specs-actors v0.9.15 // indirect
@@ -162,8 +161,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/filecoin-project/lotus v1.26.3-0.20240424142548-f907354300ba
-	github.com/glifio/go-pools v1.0.2
+	github.com/glifio/go-pools v1.0.3-0.20240703020805-d6a2fd5219d9
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
