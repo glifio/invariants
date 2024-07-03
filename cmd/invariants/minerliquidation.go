@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/filecoin-project/go-address"
@@ -14,13 +15,14 @@ import (
 	"github.com/glifio/go-pools/util"
 	"github.com/glifio/invariants"
 	"github.com/glifio/invariants/singleton"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 // minerLiquidationCmd represents the minerLiquidation command
 var minerLiquidationCmd = &cobra.Command{
-	Use:   "miner-liquidation [miner-id] [--agent <id>] [--random <num>] [--epoch <epoch>]",
+	Use:   "miner-liquidation [miner-id] [--agent <id>] [--random <num>] [--epoch <epoch>] [--progress]",
 	Short: "Compare liquidation values computed using various methods",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -56,6 +58,11 @@ var minerLiquidationCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
+		showProgress, err := cmd.Flags().GetBool("progress")
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		if agentID != 0 {
 			agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
 			if err != nil {
@@ -70,7 +77,7 @@ var minerLiquidationCmd = &cobra.Command{
 			}
 			for i, miner := range miners {
 				countStr := fmt.Sprintf("%d/%d", i+1, len(miners))
-				err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner, countStr)
+				err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner, countStr, showProgress)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -90,7 +97,7 @@ var minerLiquidationCmd = &cobra.Command{
 					log.Fatal(err)
 				}
 
-				err = checkTerminations(ctx, epoch, miner, nil, nil, "")
+				err = checkTerminations(ctx, epoch, miner, nil, nil, "", showProgress)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -140,6 +147,7 @@ func init() {
 	minerLiquidationCmd.Flags().Uint64("epoch", 0, "Check at epoch")
 	minerLiquidationCmd.Flags().Uint64("random", 0, "Randomly select miners")
 	minerLiquidationCmd.Flags().Uint64("agent", 0, "Select only miners for a specific agent")
+	minerLiquidationCmd.Flags().Bool("progress", true, "Show progress bar")
 }
 
 func checkTerminations(
@@ -149,6 +157,7 @@ func checkTerminations(
 	agent *invariants.Agent,
 	minerDetails *invariants.MinerDetailsResult,
 	countStr string,
+	showProgress bool,
 ) error {
 	if countStr != "" {
 		countStr += " "
@@ -222,12 +231,19 @@ loopSampled:
 
 	// Full
 	var fullResult *terminate.PreviewTerminateSectorsReturn
+	var bar *progressbar.ProgressBar
+	defer func() {
+		if bar != nil {
+			bar.Close()
+		}
+	}()
 	errorCh = make(chan error)
-	// progressCh = make(chan *terminate.PreviewTerminateSectorsProgress)
+	progressCh := make(chan *terminate.PreviewTerminateSectorsProgress)
 	resultCh = make(chan *terminate.PreviewTerminateSectorsReturn)
 	start = time.Now()
 	go terminate.PreviewTerminateSectors(ctx, &lotus.Api, miner, epochStr, 0, 0, 0,
-		false, false, false, 0, errorCh, nil /* progressCh */, resultCh)
+		false, false, false, 0, errorCh, progressCh, resultCh)
+	var lastDeadlinePartIdx int = -1
 
 loopFull:
 	for {
@@ -235,19 +251,50 @@ loopFull:
 		case result := <-resultCh:
 			fullResult = result
 			elapsedDuration := time.Since(start).Round(time.Second)
+			if bar != nil {
+				bar.Close()
+				// fmt.Println()
+				bar = nil
+			}
 			fmt.Printf("%sMiner %s%v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %s)\n",
 				prefix, countStr, miner, epoch, util.ToFIL(fullResult.SectorStats.TerminationPenalty),
 				fullResult.SectorsTerminated, fullResult.SectorsCount, elapsedDuration)
 			break loopFull
 
-			/*
-				case progress := <-progressCh:
-					fmt.Printf("Progress: %+v\n", progress)
-			*/
+		case progress := <-progressCh:
+			// fmt.Printf("Progress: %+v\n", progress)
+			if showProgress && bar == nil && progress.DeadlinePartitionCount > 0 {
+				bar = progressbar.NewOptions(progress.DeadlinePartitionCount,
+					progressbar.OptionSetDescription("Partitions"),
+					progressbar.OptionSetWriter(os.Stderr),
+					progressbar.OptionSetWidth(10),
+					progressbar.OptionThrottle(65*time.Millisecond),
+					progressbar.OptionShowCount(),
+					progressbar.OptionShowIts(),
+					/*
+						OptionOnCompletion(func() {
+							fmt.Fprint(os.Stderr, "\n")
+						}),
+					*/
+					progressbar.OptionSpinnerType(14),
+					progressbar.OptionFullWidth(),
+					progressbar.OptionSetRenderBlankState(true),
+					progressbar.OptionClearOnFinish())
+			}
+			if bar != nil && progress.DeadlinePartitionIndex != lastDeadlinePartIdx {
+				lastDeadlinePartIdx = progress.DeadlinePartitionIndex
+				bar.Add(1)
+			}
 
 		case err := <-errorCh:
 			log.Fatal(err)
 		}
+	}
+
+	if bar != nil {
+		bar.Close()
+		// fmt.Println()
+		bar = nil
 	}
 
 	if minerDetails != nil {
@@ -282,11 +329,11 @@ func getPct(fullVsQuick *big.Int, fullBig *big.Int, agent *invariants.Agent) str
 	full, _ := fullBig.Float64()
 	pct := "n/a"
 	if full > 0 {
-		pct = fmt.Sprintf("%0.3f%%", diff/full)
+		pct = fmt.Sprintf("%0.3f%%", diff/full*100)
 	}
 	if agent != nil && agent.PrincipalBalance.Sign() == 1 {
 		loaned, _ := agent.PrincipalBalance.Float64()
-		pct += fmt.Sprintf(", %0.3f%% of agent principal", diff/loaned)
+		pct += fmt.Sprintf(", %0.3f%% of agent principal", diff/loaned*100)
 	}
 	return pct
 }
