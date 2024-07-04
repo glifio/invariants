@@ -329,17 +329,17 @@ loopFull:
 		quickResult.SectorStats.TerminationPenalty,
 	)
 	if fullVsQuick.Sign() == 0 {
-		fmt.Printf("%sMiner %s%v: Quick method and Full method agree.",
-			prefix, countStr, miner)
+		fmt.Printf("%sMiner %s%v: Quick method and Full method agree (%d/%d sectors).\n",
+			prefix, countStr, miner, quickResult.SectorsTerminated, quickResult.SectorsCount)
 	} else if fullVsQuick.Sign() == -1 {
 		fullVsQuick = new(big.Int).Abs(fullVsQuick)
 		pct := getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
-		fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s)\n",
-			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct)
+		fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s, %d/%d sectors)\n",
+			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct, quickResult.SectorsTerminated, quickResult.SectorsCount)
 	} else {
 		pct := getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
-		fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s)\n",
-			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct)
+		fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s, %d/%d sectors)\n",
+			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct, quickResult.SectorsTerminated, quickResult.SectorsCount)
 	}
 
 	return nil
