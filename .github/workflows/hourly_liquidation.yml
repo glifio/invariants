@@ -1,9 +1,9 @@
-name: Hourly
+name: Hourly Liquidation
 
 on:
   push:
   schedule:
-    - cron: "35 * * * *"
+    - cron: "5 * * * *"
   workflow_dispatch:
 
 env:
@@ -34,16 +34,7 @@ jobs:
     - name: Build
       run: go build -v ./cmd/...
 
-    - name: Test iFIL Total Supply
-      run: ./invariants --archive=false ifil-total-supply
-
-    - name: Test Agent Balances (random)
-      run: ./invariants --archive=false agent-balances --random 10
-
-    - name: Test Agent Econ (random)
-      run: ./invariants --archive=false agent-econ --random 10
-
-    - name: Test Metrics
-      run: ./invariants --archive=false metrics
+    - name: Test random miner liquidation
+      run: ./invariants --archive=false --random 1 --progress=false
 
 
