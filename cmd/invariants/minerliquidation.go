@@ -22,7 +22,7 @@ import (
 
 // minerLiquidationCmd represents the minerLiquidation command
 var minerLiquidationCmd = &cobra.Command{
-	Use:   "miner-liquidation [miner-id] [--agent <id>] [--random <num>] [--epoch <epoch>] [--progress]",
+	Use:   "miner-liquidation [miner-id] [--agent <id>] [--random <num>] [--epoch <epoch>] [--progress] [--timeout duration]",
 	Short: "Compare liquidation values computed using various methods",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
