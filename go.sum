@@ -205,6 +205,8 @@ github.com/glifio/go-pools v1.0.3-0.20240628164543-cc66b24cbc9c h1:+fI3pkkJW++cl
 github.com/glifio/go-pools v1.0.3-0.20240628164543-cc66b24cbc9c/go.mod h1:lMmZYESrwKs3VcLE/0ce3IGwekyN+H38qAOFFFTBQIc=
 github.com/glifio/go-pools v1.0.3-0.20240703020805-d6a2fd5219d9 h1:6yKXZmxq3gMH4jL8CS8V3LOeuwI5GEKoMXPGcYasn5c=
 github.com/glifio/go-pools v1.0.3-0.20240703020805-d6a2fd5219d9/go.mod h1:lMmZYESrwKs3VcLE/0ce3IGwekyN+H38qAOFFFTBQIc=
+github.com/glifio/go-pools v1.0.3-0.20240705002456-16bf8b7c1cef h1:FYAx3wQcOmPUP4snv9oEx51wgE0syD9fIa0msiwayMo=
+github.com/glifio/go-pools v1.0.3-0.20240705002456-16bf8b7c1cef/go.mod h1:lMmZYESrwKs3VcLE/0ce3IGwekyN+H38qAOFFFTBQIc=
 github.com/go-check/check v0.0.0-20180628173108-788fd7840127/go.mod h1:9ES+weclKsC9YodN5RgxqK/VD9HM9JsCSh7rNhMZE98=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.1 h1:pKouT5E8xu9zeFC39JXRDukb6JFQPXM5p5I91188VAQ=

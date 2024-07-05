@@ -165,7 +165,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/glifio/go-pools v1.0.3-0.20240703020805-d6a2fd5219d9
+	github.com/glifio/go-pools v1.0.3-0.20240705002456-16bf8b7c1cef
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
