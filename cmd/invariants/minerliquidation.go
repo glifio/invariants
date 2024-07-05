@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"math/rand"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/filecoin-project/go-address"
@@ -117,22 +119,48 @@ var minerLiquidationCmd = &cobra.Command{
 				}
 
 				if randomMiners > 0 {
-					log.Fatal("Not implemented")
-					/*
-						if int(randomAgents) > len(agents) {
-							randomAgents = uint64(len(agents))
+					fmt.Println("Loading agents...")
+					agents, err := invariants.GetAgentsFromAPI(ctx, eventsURL)
+					if err != nil {
+						log.Fatal(err)
+					}
+					fmt.Println("Loading miners...")
+					allMiners := make([]invariants.MinerDetailsResult, 0)
+					for _, agent := range agents {
+						miners, err := invariants.GetAgentMinersFromAPI(ctx, eventsURL, agent.ID)
+						if err != nil {
+							log.Fatal(err)
 						}
-						rand.Shuffle(len(agents), func(i, j int) {
-							agents[i], agents[j] = agents[j], agents[i]
-						})
-						for i := 0; i < int(randomAgents); i++ {
-							agent := agents[i]
-							err := checkAgentEcon(ctx, eventsURL, epoch, &agent)
-							if err != nil {
-								log.Fatal(err)
+						allMiners = append(allMiners, miners...)
+						/*
+							for _, miner := range miners {
+								fmt.Printf("Jim %+v\n", miner)
 							}
+						*/
+						if agent.ID%10 == 0 {
+							fmt.Printf("  %d loaded\n", len(allMiners))
 						}
-					*/
+					}
+					fmt.Printf("%d miners loaded.\n", len(allMiners))
+
+					if int(randomMiners) > len(allMiners) {
+						randomMiners = uint64(len(allMiners))
+					}
+					rand.Shuffle(len(agents), func(i, j int) {
+						allMiners[i], allMiners[j] = allMiners[j], allMiners[i]
+					})
+					for i := 0; i < int(randomMiners); i++ {
+						miner := allMiners[i]
+						idx := slices.IndexFunc(agents, func(agent invariants.Agent) bool { return agent.ID == miner.AgentId })
+						agent := agents[idx]
+						fmt.Printf("Agent %v @%d: %d miners, %0.3f FIL borrowed (via API)\n",
+							agent.ID, agent.Height, agent.Miners, util.ToFIL(agent.PrincipalBalance))
+
+						err = checkTerminations(ctx, epoch, miner.MinerAddr, &agent, &miner, "", showProgress)
+						if err != nil {
+							log.Fatal(err)
+						}
+					}
 				} else {
 					cmd.Usage()
 				}
