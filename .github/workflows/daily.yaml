@@ -1,4 +1,4 @@
-name: GLIF Invariants Daily
+name: Daily
 
 on:
   push:
