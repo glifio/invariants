@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"math/rand"
 	"os"
-	"slices"
 	"time"
 
 	"github.com/filecoin-project/go-address"
@@ -124,21 +123,15 @@ var minerLiquidationCmd = &cobra.Command{
 					if err != nil {
 						log.Fatal(err)
 					}
-					fmt.Println("Loading miners...")
-					allMiners := make([]invariants.MinerDetailsResult, 0)
+
+					type AgentMiner struct {
+						agent *invariants.Agent
+						miner int
+					}
+					allMiners := make([]AgentMiner, 0)
 					for _, agent := range agents {
-						miners, err := invariants.GetAgentMinersFromAPI(ctx, eventsURL, agent.ID)
-						if err != nil {
-							log.Fatal(err)
-						}
-						allMiners = append(allMiners, miners...)
-						/*
-							for _, miner := range miners {
-								fmt.Printf("Jim %+v\n", miner)
-							}
-						*/
-						if agent.ID%10 == 0 {
-							fmt.Printf("  %d loaded\n", len(allMiners))
+						for i := 1; i <= int(agent.Miners); i++ {
+							allMiners = append(allMiners, AgentMiner{&agent, i})
 						}
 					}
 					fmt.Printf("%d miners loaded.\n", len(allMiners))
@@ -150,15 +143,23 @@ var minerLiquidationCmd = &cobra.Command{
 						allMiners[i], allMiners[j] = allMiners[j], allMiners[i]
 					})
 					for i := 0; i < int(randomMiners); i++ {
-						miner := allMiners[i]
-						idx := slices.IndexFunc(agents, func(agent invariants.Agent) bool { return agent.ID == miner.AgentId })
-						agent := agents[idx]
+						agentMiner := allMiners[i]
+						agent := agentMiner.agent
 						fmt.Printf("Agent %v @%d: %d miners, %0.3f FIL borrowed (via API)\n",
 							agent.ID, agent.Height, agent.Miners, util.ToFIL(agent.PrincipalBalance))
 
-						err = checkTerminations(ctx, epoch, miner.MinerAddr, &agent, &miner, "", showProgress)
+						miners, err := invariants.GetAgentMinersFromAPI(ctx, eventsURL, agent.ID)
 						if err != nil {
 							log.Fatal(err)
+						}
+						for i, miner := range miners {
+							if i == agentMiner.miner-1 {
+								countStr := fmt.Sprintf("%d/%d", i+1, len(miners))
+								err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner, countStr, showProgress)
+								if err != nil {
+									log.Fatal(err)
+								}
+							}
 						}
 					}
 				} else {
