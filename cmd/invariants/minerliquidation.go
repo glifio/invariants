@@ -28,9 +28,16 @@ var minerLiquidationCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 
+		timeout, err := cmd.Flags().GetDuration("timeout")
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
 		eventsURL := viper.GetString("events_api")
 
-		err := initSingleton(ctx)
+		err = initSingleton(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -141,6 +148,7 @@ func init() {
 	minerLiquidationCmd.Flags().Uint64("agent", 0, "Select only miners for a specific agent")
 	minerLiquidationCmd.Flags().Bool("all-agents", false, "Loop over all agents")
 	minerLiquidationCmd.Flags().Bool("progress", true, "Show progress bar")
+	minerLiquidationCmd.Flags().Duration("timeout", time.Duration(15*time.Minute), "Stop query after timeout")
 }
 
 func checkTerminationsForAgent(
