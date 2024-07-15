@@ -2,8 +2,8 @@ name: Daily
 
 on:
   push:
-  #schedule:
-  #- cron: "22 18 * * *"
+  schedule:
+    - cron: "22 18 * * *"
   workflow_dispatch:
 
 env:
