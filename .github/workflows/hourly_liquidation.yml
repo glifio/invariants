@@ -2,8 +2,8 @@ name: Hourly Liquidation
 
 on:
   push:
-  schedule:
-    - cron: "5 * * * *"
+  #schedule:
+  #  - cron: "5 * * * *"
   workflow_dispatch:
 
 env:
