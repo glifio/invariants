@@ -2,8 +2,8 @@ name: Hourly
 
 on:
   push:
-  schedule:
-    - cron: "35 * * * *"
+  #schedule:
+  #  - cron: "35 * * * *"
   workflow_dispatch:
 
 env:
