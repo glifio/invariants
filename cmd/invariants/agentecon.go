@@ -149,6 +149,9 @@ func checkAgentEcon(ctx context.Context, eventsURL string, epoch uint64, agent *
 	}
 	// fmt.Printf("Econ node @%d: %+v\n", height, econNode)
 
+	// Mutate for testing
+	// econAPI.Liability = big.NewInt(1234)
+
 	if econAPI.Liability.Cmp(econNode.Liability) == 0 {
 		fmt.Printf("Agent %d: Success, latest liabilities match: %v\n", agentID, econNode.Liability)
 		return false, nil

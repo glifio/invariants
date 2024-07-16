@@ -135,9 +135,11 @@ func checkAgentBalance(ctx context.Context, eventsURL string, epoch uint64, agen
 		if err != nil {
 			return true, err
 		}
+		// Mutate for testing
+		// availableBalanceResult.AvailableBalanceDB = big.NewInt(1234)
 		if availableBalanceResult.AvailableBalanceDB.Cmp(availableBalanceResult.AvailableBalanceNd) == 0 {
 			fmt.Printf("Agent %d: Success, latest available balances match: %v\n", agentID, availableBalanceResult.AvailableBalanceDB)
-			return true, nil
+			return false, nil
 		}
 		fmt.Printf("Agent %d: Error, latest available balance from REST API doesn't match node.\n", agentID)
 		fmt.Printf("  Node: %v\n", availableBalanceResult.AvailableBalanceNd)
