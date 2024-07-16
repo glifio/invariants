@@ -44,6 +44,8 @@ var agentBalancesCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
+		var failCount int
+
 		if !allAgents && randomAgents == 0 {
 			if len(args) != 1 {
 				cmd.Usage()
@@ -60,9 +62,12 @@ var agentBalancesCmd = &cobra.Command{
 				log.Fatal(err)
 			}
 
-			err = checkAgentBalance(ctx, eventsURL, epoch, agent)
+			failed, err := checkAgentBalance(ctx, eventsURL, epoch, agent)
 			if err != nil {
 				log.Fatal(err)
+			}
+			if failed {
+				failCount++
 			}
 		} else {
 			if len(args) != 0 {
@@ -81,9 +86,12 @@ var agentBalancesCmd = &cobra.Command{
 					return
 				}
 				for _, agent := range agents {
-					err := checkAgentBalance(ctx, eventsURL, epoch, &agent)
+					failed, err := checkAgentBalance(ctx, eventsURL, epoch, &agent)
 					if err != nil {
 						log.Fatal(err)
+					}
+					if failed {
+						failCount++
 					}
 				}
 			} else if randomAgents > 0 {
@@ -95,14 +103,20 @@ var agentBalancesCmd = &cobra.Command{
 				})
 				for i := 0; i < int(randomAgents); i++ {
 					agent := agents[i]
-					err := checkAgentBalance(ctx, eventsURL, epoch, &agent)
+					failed, err := checkAgentBalance(ctx, eventsURL, epoch, &agent)
 					if err != nil {
 						log.Fatal(err)
+					}
+					if failed {
+						failCount++
 					}
 				}
 			} else {
 				cmd.Usage()
 			}
+		}
+		if failCount > 0 {
+			log.Fatal("FAIL: Agent balances test had errors.")
 		}
 	},
 }
@@ -114,16 +128,16 @@ func init() {
 	agentBalancesCmd.Flags().Bool("all", false, "Check all agents")
 }
 
-func checkAgentBalance(ctx context.Context, eventsURL string, epoch uint64, agent *invariants.Agent) error {
+func checkAgentBalance(ctx context.Context, eventsURL string, epoch uint64, agent *invariants.Agent) (failed bool, err error) {
 	agentID := agent.ID
 	if epoch == 0 {
 		availableBalanceResult, err := invariants.GetAgentAvailableBalanceFromAPI(ctx, eventsURL, agentID)
 		if err != nil {
-			return err
+			return true, err
 		}
 		if availableBalanceResult.AvailableBalanceDB.Cmp(availableBalanceResult.AvailableBalanceNd) == 0 {
 			fmt.Printf("Agent %d: Success, latest available balances match: %v\n", agentID, availableBalanceResult.AvailableBalanceDB)
-			return nil
+			return true, nil
 		}
 		fmt.Printf("Agent %d: Error, latest available balance from REST API doesn't match node.\n", agentID)
 		fmt.Printf("  Node: %v\n", availableBalanceResult.AvailableBalanceNd)
@@ -132,28 +146,28 @@ func checkAgentBalance(ctx context.Context, eventsURL string, epoch uint64, agen
 	} else {
 		availableBalance, err := invariants.GetAgentAvailableBalanceAtHeightFromAPI(ctx, eventsURL, agentID, epoch)
 		if err != nil {
-			return err
+			return true, err
 		}
 
 		agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
 		if err != nil {
-			return err
+			return true, err
 		}
 
 		liquidAssets, err := getLiquidAssetsAtHeight(ctx, agent, epoch)
 		if err != nil {
-			return err
+			return true, err
 		}
 
 		if availableBalance.Cmp(liquidAssets) == 0 {
 			fmt.Printf("Agent %d @%d: Success, latest available balances match: %v\n", agentID, epoch, availableBalance)
-			return nil
+			return false, nil
 		}
 		fmt.Printf("Agent %d @%d: Error, available balance from REST API doesn't match node.\n", agentID, epoch)
 		fmt.Printf("  Node: %v\n", liquidAssets)
 		fmt.Printf("   API: %v\n", availableBalance)
 	}
-	return nil
+	return true, nil
 }
 
 func examineTransactionHistory(ctx context.Context, eventsURL string, agent *invariants.Agent) {

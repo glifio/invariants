@@ -53,6 +53,9 @@ var iFILTotalSupplyCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
+		// Mutate for testing
+		// nodeTotalSupply.IFILTotalSupply = big.NewInt(1234)
+
 		if apiTotalSupply.IFILTotalSupply.Cmp(nodeTotalSupply.IFILTotalSupply) == 0 {
 			fmt.Printf("@%d: Success, iFIL total supply matches: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
 			return
@@ -63,6 +66,7 @@ var iFILTotalSupplyCmd = &cobra.Command{
 		if findMissing {
 			findMissingIFILEvents(ctx, eventsURL, epoch)
 		}
+		log.Fatal("FAIL: iFIL Total Supply test had errors.")
 	},
 }
 

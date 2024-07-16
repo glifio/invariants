@@ -365,6 +365,7 @@ loopFull:
 		fullResult.SectorStats.TerminationPenalty,
 		quickResult.SectorStats.TerminationPenalty,
 	)
+
 	if fullVsQuick.Sign() == 0 {
 		fmt.Printf("%sMiner %s%v: Quick method and Full method agree (%d/%d sectors).\n",
 			prefix, countStr, miner, quickResult.SectorsTerminated, quickResult.SectorsCount)
