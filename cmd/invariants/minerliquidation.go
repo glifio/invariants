@@ -76,6 +76,13 @@ var minerLiquidationCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
+		maxPctVariance, err := cmd.Flags().GetFloat64("max-pct-variance")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var failCount int
+
 		if allAgents {
 			agents, err := invariants.GetAgentsFromAPI(ctx, eventsURL)
 			if err != nil {
@@ -83,15 +90,23 @@ var minerLiquidationCmd = &cobra.Command{
 			}
 
 			for _, agent := range agents {
-				err := checkTerminationsForAgent(ctx, eventsURL, agent.ID, epoch, showProgress)
+				failed, err := checkTerminationsForAgent(ctx, eventsURL, agent.ID,
+					epoch, showProgress, maxPctVariance)
 				if err != nil {
 					log.Fatal(err)
 				}
+				if failed {
+					failCount++
+				}
 			}
 		} else if agentID != 0 {
-			err := checkTerminationsForAgent(ctx, eventsURL, agentID, epoch, showProgress)
+			failed, err := checkTerminationsForAgent(ctx, eventsURL, agentID, epoch,
+				showProgress, maxPctVariance)
 			if err != nil {
 				log.Fatal(err)
+			}
+			if failed {
+				failCount++
 			}
 		} else {
 			if randomMiners == 0 {
@@ -107,9 +122,13 @@ var minerLiquidationCmd = &cobra.Command{
 					log.Fatal(err)
 				}
 
-				err = checkTerminations(ctx, epoch, miner, nil, nil, "", showProgress)
+				failed, err := checkTerminations(ctx, epoch, miner, nil, nil, "",
+					showProgress, maxPctVariance)
 				if err != nil {
 					log.Fatal(err)
+				}
+				if failed {
+					failCount++
 				}
 			} else {
 				if len(args) != 0 {
@@ -155,9 +174,13 @@ var minerLiquidationCmd = &cobra.Command{
 						for i, miner := range miners {
 							if i == agentMiner.miner-1 {
 								countStr := fmt.Sprintf("%d/%d", i+1, len(miners))
-								err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner, countStr, showProgress)
+								failed, err := checkTerminations(ctx, epoch, miner.MinerAddr,
+									agent, &miner, countStr, showProgress, maxPctVariance)
 								if err != nil {
 									log.Fatal(err)
+								}
+								if failed {
+									failCount++
 								}
 							}
 						}
@@ -166,6 +189,9 @@ var minerLiquidationCmd = &cobra.Command{
 					cmd.Usage()
 				}
 			}
+		}
+		if failCount > 0 {
+			log.Fatal("FAIL: Miner liquidation test had errors.")
 		}
 	},
 }
@@ -178,6 +204,7 @@ func init() {
 	minerLiquidationCmd.Flags().Bool("all-agents", false, "Loop over all agents")
 	minerLiquidationCmd.Flags().Bool("progress", true, "Show progress bar")
 	minerLiquidationCmd.Flags().Duration("timeout", time.Duration(15*time.Minute), "Stop query after timeout")
+	minerLiquidationCmd.Flags().Float64("max-pct-variance", 5.0, "Acceptable percentage difference between quick and full methods")
 }
 
 func checkTerminationsForAgent(
@@ -186,26 +213,35 @@ func checkTerminationsForAgent(
 	agentID uint64,
 	epoch uint64,
 	showProgress bool,
-) error {
+	maxPctVariance float64,
+) (failed bool, err error) {
 	agent, err := invariants.GetAgentFromAPI(ctx, eventsURL, agentID)
 	if err != nil {
-		return err
+		return true, err
 	}
 	fmt.Printf("Agent %v @%d: %d miners, %0.3f FIL borrowed (via API)\n",
 		agent.ID, agent.Height, agent.Miners, util.ToFIL(agent.PrincipalBalance))
 
 	miners, err := invariants.GetAgentMinersFromAPI(ctx, eventsURL, agentID)
 	if err != nil {
-		return err
+		return true, err
 	}
+	var failCount int
 	for i, miner := range miners {
 		countStr := fmt.Sprintf("%d/%d", i+1, len(miners))
-		err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner, countStr, showProgress)
+		failed, err = checkTerminations(ctx, epoch, miner.MinerAddr, agent, &miner,
+			countStr, showProgress, maxPctVariance)
 		if err != nil {
-			return err
+			return true, err
+		}
+		if failed {
+			failCount++
 		}
 	}
-	return nil
+	if failCount > 0 {
+		return true, nil
+	}
+	return false, nil
 }
 
 func checkTerminations(
@@ -216,7 +252,8 @@ func checkTerminations(
 	minerDetails *invariants.MinerDetailsResult,
 	countStr string,
 	showProgress bool,
-) error {
+	maxPctVariance float64,
+) (failed bool, err error) {
 	if countStr != "" {
 		countStr += " "
 	}
@@ -231,14 +268,14 @@ func checkTerminations(
 
 	ts, err := lotus.Api.ChainGetTipSetByHeight(ctx, abi.ChainEpoch(epoch), types.EmptyTSK)
 	if err != nil {
-		return err
+		return true, err
 	}
 
 	// Quick
 	start := time.Now()
 	quickResult, err := terminate.PreviewTerminateSectorsQuick(ctx, &lotus.Api, miner, ts)
 	if err != nil {
-		return err
+		return true, err
 	}
 	elapsed := time.Since(start).Seconds()
 	fmt.Printf("%sMiner %s%v @%d: Quick method: %0.3f FIL (%d of %d sectors, offchain, %0.1fs)\n",
@@ -369,31 +406,43 @@ loopFull:
 	if fullVsQuick.Sign() == 0 {
 		fmt.Printf("%sMiner %s%v: Quick method and Full method agree (%d/%d sectors).\n",
 			prefix, countStr, miner, quickResult.SectorsTerminated, quickResult.SectorsCount)
-	} else if fullVsQuick.Sign() == -1 {
-		fullVsQuick = new(big.Int).Abs(fullVsQuick)
-		pct := getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
-		fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s, %d/%d sectors)\n",
-			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct, quickResult.SectorsTerminated, quickResult.SectorsCount)
 	} else {
-		pct := getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
-		fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s, %d/%d sectors)\n",
-			prefix, countStr, miner, util.ToFIL(fullVsQuick), pct, quickResult.SectorsTerminated, quickResult.SectorsCount)
+		var pctNum float64
+		var pctStr string
+		if fullVsQuick.Sign() == -1 {
+			fullVsQuick = new(big.Int).Abs(fullVsQuick)
+			pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
+			fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s, %d/%d sectors)\n",
+				prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
+				quickResult.SectorsTerminated, quickResult.SectorsCount)
+		} else {
+			pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
+			fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s, %d/%d sectors)\n",
+				prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
+				quickResult.SectorsTerminated, quickResult.SectorsCount)
+		}
+		if pctNum > maxPctVariance {
+			fmt.Printf("%sMiner %v%v: Assertion failed: Quick vs Full diff %0.3f%% > %0.3f%%\n",
+				prefix, countStr, miner, pctNum, maxPctVariance)
+			return true, nil
+		}
 	}
 
-	return nil
+	return false, nil
 }
 
-func getPct(fullVsQuick *big.Int, fullBig *big.Int, agent *invariants.Agent) string {
+func getPct(fullVsQuick *big.Int, fullBig *big.Int, agent *invariants.Agent) (pctNum float64, pctStr string) {
 	fullVsQuick = new(big.Int).Abs(fullVsQuick)
 	diff, _ := fullVsQuick.Float64()
 	full, _ := fullBig.Float64()
-	pct := "n/a"
+	pctStr = "n/a"
 	if full > 0 {
-		pct = fmt.Sprintf("%0.3f%%", diff/full*100)
+		pctNum = diff / full * 100
+		pctStr = fmt.Sprintf("%0.3f%%", pctNum)
 	}
 	if agent != nil && agent.PrincipalBalance.Sign() == 1 {
 		loaned, _ := agent.PrincipalBalance.Float64()
-		pct += fmt.Sprintf(", %0.3f%% of agent principal", diff/loaned*100)
+		pctStr += fmt.Sprintf(", %0.3f%% of agent principal", diff/loaned*100)
 	}
-	return pct
+	return pctNum, pctStr
 }
