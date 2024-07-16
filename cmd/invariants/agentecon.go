@@ -42,6 +42,8 @@ var agentEconCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
+		var failCount int
+
 		if !allAgents && randomAgents == 0 {
 			if len(args) != 1 {
 				cmd.Usage()
@@ -58,9 +60,12 @@ var agentEconCmd = &cobra.Command{
 				log.Fatal(err)
 			}
 
-			err = checkAgentEcon(ctx, eventsURL, epoch, agent)
+			failed, err := checkAgentEcon(ctx, eventsURL, epoch, agent)
 			if err != nil {
 				log.Fatal(err)
+			}
+			if failed {
+				failCount++
 			}
 		} else {
 			if len(args) != 0 {
@@ -79,9 +84,12 @@ var agentEconCmd = &cobra.Command{
 					return
 				}
 				for _, agent := range agents {
-					err := checkAgentEcon(ctx, eventsURL, epoch, &agent)
+					failed, err := checkAgentEcon(ctx, eventsURL, epoch, &agent)
 					if err != nil {
 						log.Fatal(err)
+					}
+					if failed {
+						failCount++
 					}
 				}
 			} else if randomAgents > 0 {
@@ -93,14 +101,21 @@ var agentEconCmd = &cobra.Command{
 				})
 				for i := 0; i < int(randomAgents); i++ {
 					agent := agents[i]
-					err := checkAgentEcon(ctx, eventsURL, epoch, &agent)
+					failed, err := checkAgentEcon(ctx, eventsURL, epoch, &agent)
 					if err != nil {
 						log.Fatal(err)
+					}
+					if failed {
+						failCount++
 					}
 				}
 			} else {
 				cmd.Usage()
 			}
+		}
+
+		if failCount > 0 {
+			log.Fatal("FAIL: Econ tests had errors.")
 		}
 	},
 }
@@ -112,43 +127,38 @@ func init() {
 	agentEconCmd.Flags().Bool("all", false, "Check all agents")
 }
 
-func checkAgentEcon(ctx context.Context, eventsURL string, epoch uint64, agent *invariants.Agent) error {
+func checkAgentEcon(ctx context.Context, eventsURL string, epoch uint64, agent *invariants.Agent) (failed bool, err error) {
 	agentID := agent.ID
 
-	var err error
 	if epoch == 0 {
 		epoch, err = getHeadEpoch(ctx)
 		if err != nil {
-			return err
+			return true, err
 		}
 		epoch = epoch - 3
 	}
 
 	econAPI, err := invariants.GetAgentEconFromAPI(ctx, eventsURL, agentID)
 	if err != nil {
-		return err
+		return true, err
 	}
 	// fmt.Printf("Econ api: %+v\n", econAPI)
 	econNode, height, err := invariants.GetAgentEconFromNode(ctx, agent.AddressNative, epoch)
 	if err != nil {
-		return err
+		return true, err
 	}
 	// fmt.Printf("Econ node @%d: %+v\n", height, econNode)
 
-	fail := false
+	// Mutate for testing
+	// econAPI.Liability = big.NewInt(1234)
 
 	if econAPI.Liability.Cmp(econNode.Liability) == 0 {
 		fmt.Printf("Agent %d: Success, latest liabilities match: %v\n", agentID, econNode.Liability)
+		return false, nil
 	} else {
 		fmt.Printf("Agent %d: Error, latest liability from REST API doesn't match node.\n", agentID)
 		fmt.Printf("  Node @%d: %v\n", height, econNode.Liability)
 		fmt.Printf("   API: %v\n", econAPI.Liability)
-		fail = true
+		return true, nil
 	}
-
-	if fail {
-		log.Fatal("FAIL: Econ tests had errors.")
-	}
-
-	return nil
 }
