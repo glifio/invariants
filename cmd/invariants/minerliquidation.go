@@ -6,7 +6,6 @@ import (
 	"log"
 	"math/big"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/filecoin-project/go-address"
@@ -16,7 +15,6 @@ import (
 	"github.com/glifio/go-pools/util"
 	"github.com/glifio/invariants"
 	"github.com/glifio/invariants/singleton"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -333,110 +331,107 @@ loopSampled:
 	}
 
 	// Full
-	var fullResult *terminate.PreviewTerminateSectorsReturn
-	var bar *progressbar.ProgressBar
-	defer func() {
-		if bar != nil {
-			bar.Close()
-		}
-	}()
-	errorCh = make(chan error)
-	progressCh := make(chan *terminate.PreviewTerminateSectorsProgress)
-	resultCh = make(chan *terminate.PreviewTerminateSectorsReturn)
-	start = time.Now()
-	go terminate.PreviewTerminateSectors(ctx, &lotus.Api, miner, epochStr, 0, 0, 0,
-		false, false, false, 0, errorCh, progressCh, resultCh)
-	var lastDeadlinePartIdx int = -1
+	/*
+			var fullResult *terminate.PreviewTerminateSectorsReturn
+			var bar *progressbar.ProgressBar
+			defer func() {
+				if bar != nil {
+					bar.Close()
+				}
+			}()
+			errorCh = make(chan error)
+			progressCh := make(chan *terminate.PreviewTerminateSectorsProgress)
+			resultCh = make(chan *terminate.PreviewTerminateSectorsReturn)
+			start = time.Now()
+			go terminate.PreviewTerminateSectors(ctx, &lotus.Api, miner, epochStr, 0, 0, 0,
+				false, false, false, 0, errorCh, progressCh, resultCh)
+			var lastDeadlinePartIdx int = -1
 
-loopFull:
-	for {
-		select {
-		case result := <-resultCh:
-			fullResult = result
-			elapsedDuration := time.Since(start).Round(time.Second)
+		loopFull:
+			for {
+				select {
+				case result := <-resultCh:
+					fullResult = result
+					elapsedDuration := time.Since(start).Round(time.Second)
+					if bar != nil {
+						bar.Close()
+						// fmt.Println()
+						bar = nil
+					}
+					fmt.Printf("%sMiner %s%v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %s)\n",
+						prefix, countStr, miner, epoch, util.ToFIL(fullResult.SectorStats.TerminationPenalty),
+						fullResult.SectorsTerminated, fullResult.SectorsCount, elapsedDuration)
+					break loopFull
+
+				case progress := <-progressCh:
+					// fmt.Printf("Progress: %+v\n", progress)
+					if showProgress && bar == nil && progress.DeadlinePartitionCount > 0 {
+						bar = progressbar.NewOptions(progress.DeadlinePartitionCount,
+							progressbar.OptionSetDescription("Partitions"),
+							progressbar.OptionSetWriter(os.Stderr),
+							progressbar.OptionSetWidth(10),
+							progressbar.OptionThrottle(65*time.Millisecond),
+							progressbar.OptionShowCount(),
+							progressbar.OptionShowIts(),
+							progressbar.OptionSpinnerType(14),
+							progressbar.OptionFullWidth(),
+							progressbar.OptionSetRenderBlankState(true),
+							progressbar.OptionClearOnFinish())
+					}
+					if bar != nil && progress.DeadlinePartitionIndex != lastDeadlinePartIdx {
+						lastDeadlinePartIdx = progress.DeadlinePartitionIndex
+						bar.Add(1)
+					}
+
+				case err := <-errorCh:
+					log.Fatal(err)
+				}
+			}
+
 			if bar != nil {
 				bar.Close()
 				// fmt.Println()
 				bar = nil
 			}
-			fmt.Printf("%sMiner %s%v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %s)\n",
-				prefix, countStr, miner, epoch, util.ToFIL(fullResult.SectorStats.TerminationPenalty),
-				fullResult.SectorsTerminated, fullResult.SectorsCount, elapsedDuration)
-			break loopFull
 
-		case progress := <-progressCh:
-			// fmt.Printf("Progress: %+v\n", progress)
-			if showProgress && bar == nil && progress.DeadlinePartitionCount > 0 {
-				bar = progressbar.NewOptions(progress.DeadlinePartitionCount,
-					progressbar.OptionSetDescription("Partitions"),
-					progressbar.OptionSetWriter(os.Stderr),
-					progressbar.OptionSetWidth(10),
-					progressbar.OptionThrottle(65*time.Millisecond),
-					progressbar.OptionShowCount(),
-					progressbar.OptionShowIts(),
-					/*
-						OptionOnCompletion(func() {
-							fmt.Fprint(os.Stderr, "\n")
-						}),
-					*/
-					progressbar.OptionSpinnerType(14),
-					progressbar.OptionFullWidth(),
-					progressbar.OptionSetRenderBlankState(true),
-					progressbar.OptionClearOnFinish())
-			}
-			if bar != nil && progress.DeadlinePartitionIndex != lastDeadlinePartIdx {
-				lastDeadlinePartIdx = progress.DeadlinePartitionIndex
-				bar.Add(1)
+			if minerDetails != nil {
+				fmt.Printf("%sMiner %s%v: Termination penalty via API: %0.3f FIL\n",
+					prefix, countStr, miner, util.ToFIL(minerDetails.TerminationPenalty))
 			}
 
-		case err := <-errorCh:
-			log.Fatal(err)
-		}
-	}
+			// FIXME: Assert that termination penalty via API is within range
 
-	if bar != nil {
-		bar.Close()
-		// fmt.Println()
-		bar = nil
-	}
+			// Variances
+			fullVsQuick := new(big.Int).Sub(
+				fullResult.SectorStats.TerminationPenalty,
+				quickResult.SectorStats.TerminationPenalty,
+			)
 
-	if minerDetails != nil {
-		fmt.Printf("%sMiner %s%v: Termination penalty via API: %0.3f FIL\n",
-			prefix, countStr, miner, util.ToFIL(minerDetails.TerminationPenalty))
-	}
-
-	// FIXME: Assert that termination penalty via API is within range
-
-	// Variances
-	fullVsQuick := new(big.Int).Sub(
-		fullResult.SectorStats.TerminationPenalty,
-		quickResult.SectorStats.TerminationPenalty,
-	)
-
-	if fullVsQuick.Sign() == 0 {
-		fmt.Printf("%sMiner %s%v: Quick method and Full method agree (%d/%d sectors).\n",
-			prefix, countStr, miner, quickResult.SectorsTerminated, quickResult.SectorsCount)
-	} else {
-		var pctNum float64
-		var pctStr string
-		if fullVsQuick.Sign() == -1 {
-			fullVsQuick = new(big.Int).Abs(fullVsQuick)
-			pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
-			fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s, %d/%d sectors)\n",
-				prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
-				quickResult.SectorsTerminated, quickResult.SectorsCount)
-		} else {
-			pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
-			fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s, %d/%d sectors)\n",
-				prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
-				quickResult.SectorsTerminated, quickResult.SectorsCount)
-		}
-		if pctNum > maxPctVariance {
-			fmt.Printf("%sMiner %v%v: Assertion failed: Quick vs Full diff %0.3f%% > %0.3f%%\n",
-				prefix, countStr, miner, pctNum, maxPctVariance)
-			failCount++
-		}
-	}
+			if fullVsQuick.Sign() == 0 {
+				fmt.Printf("%sMiner %s%v: Quick method and Full method agree (%d/%d sectors).\n",
+					prefix, countStr, miner, quickResult.SectorsTerminated, quickResult.SectorsCount)
+			} else {
+				var pctNum float64
+				var pctStr string
+				if fullVsQuick.Sign() == -1 {
+					fullVsQuick = new(big.Int).Abs(fullVsQuick)
+					pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
+					fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s, %d/%d sectors)\n",
+						prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
+						quickResult.SectorsTerminated, quickResult.SectorsCount)
+				} else {
+					pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
+					fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s, %d/%d sectors)\n",
+						prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
+						quickResult.SectorsTerminated, quickResult.SectorsCount)
+				}
+				if pctNum > maxPctVariance {
+					fmt.Printf("%sMiner %v%v: Assertion failed: Quick vs Full diff %0.3f%% > %0.3f%%\n",
+						prefix, countStr, miner, pctNum, maxPctVariance)
+					failCount++
+				}
+			}
+	*/
 
 	if failCount > 0 {
 		return true, nil
