@@ -271,6 +271,8 @@ func checkTerminations(
 		return true, err
 	}
 
+	var failCount int
+
 	// Quick
 	start := time.Now()
 	quickResult, err := terminate.PreviewTerminateSectorsQuick(ctx, &lotus.Api, miner, ts)
@@ -322,6 +324,12 @@ loopSampled:
 		case err := <-errorCh:
 			log.Fatal(err)
 		}
+	}
+
+	if sampledResult.SectorStats.TerminationPenalty.Cmp(quickResult.SectorStats.TerminationPenalty) != 0 {
+		fmt.Printf("%sMiner %v%v: Assertion failed: Quick vs Sampled don't match\n",
+			prefix, countStr, miner)
+		failCount++
 	}
 
 	// Full
@@ -397,6 +405,8 @@ loopFull:
 			prefix, countStr, miner, util.ToFIL(minerDetails.TerminationPenalty))
 	}
 
+	// FIXME: Assert that termination penalty via API is within range
+
 	// Variances
 	fullVsQuick := new(big.Int).Sub(
 		fullResult.SectorStats.TerminationPenalty,
@@ -424,11 +434,15 @@ loopFull:
 		if pctNum > maxPctVariance {
 			fmt.Printf("%sMiner %v%v: Assertion failed: Quick vs Full diff %0.3f%% > %0.3f%%\n",
 				prefix, countStr, miner, pctNum, maxPctVariance)
-			return true, nil
+			failCount++
 		}
 	}
 
-	return false, nil
+	if failCount > 0 {
+		return true, nil
+	} else {
+		return false, nil
+	}
 }
 
 func getPct(fullVsQuick *big.Int, fullBig *big.Int, agent *invariants.Agent) (pctNum float64, pctStr string) {
