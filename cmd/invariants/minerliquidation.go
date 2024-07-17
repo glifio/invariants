@@ -356,7 +356,6 @@ loopFull:
 			elapsedDuration := time.Since(start).Round(time.Second)
 			if bar != nil {
 				bar.Close()
-				// fmt.Println()
 				bar = nil
 			}
 			fmt.Printf("%sMiner %s%v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %s)\n",
@@ -365,7 +364,6 @@ loopFull:
 			break loopFull
 
 		case progress := <-progressCh:
-			// fmt.Printf("Progress: %+v\n", progress)
 			if showProgress && bar == nil && progress.DeadlinePartitionCount > 0 {
 				bar = progressbar.NewOptions(progress.DeadlinePartitionCount,
 					progressbar.OptionSetDescription("Partitions"),
@@ -374,11 +372,6 @@ loopFull:
 					progressbar.OptionThrottle(65*time.Millisecond),
 					progressbar.OptionShowCount(),
 					progressbar.OptionShowIts(),
-					/*
-						OptionOnCompletion(func() {
-							fmt.Fprint(os.Stderr, "\n")
-						}),
-					*/
 					progressbar.OptionSpinnerType(14),
 					progressbar.OptionFullWidth(),
 					progressbar.OptionSetRenderBlankState(true),
@@ -401,11 +394,20 @@ loopFull:
 	}
 
 	if minerDetails != nil {
+		apiDiff := new(big.Int).Sub(minerDetails.TerminationPenalty, quickResult.SectorStats.TerminationPenalty)
+		// For testing assertion
+		// apiDiff, _ = new(big.Int).SetString("650000000000000000", 10)
 		fmt.Printf("%sMiner %s%v: Termination penalty via API: %0.3f FIL\n",
 			prefix, countStr, miner, util.ToFIL(minerDetails.TerminationPenalty))
-	}
 
-	// FIXME: Assert that termination penalty via API is within range
+		// Assert that db value from API is withing range
+		pctApi, _ := getPct(apiDiff, fullResult.SectorStats.TerminationPenalty, agent)
+		if pctApi > maxPctVariance {
+			fmt.Printf("%sMiner %v%v: Assertion failed: API vs Full %0.3f%% > %0.3f%%\n",
+				prefix, countStr, miner, pctApi, maxPctVariance)
+			failCount++
+		}
+	}
 
 	// Variances
 	fullVsQuick := new(big.Int).Sub(
@@ -445,13 +447,13 @@ loopFull:
 	}
 }
 
-func getPct(fullVsQuick *big.Int, fullBig *big.Int, agent *invariants.Agent) (pctNum float64, pctStr string) {
-	fullVsQuick = new(big.Int).Abs(fullVsQuick)
-	diff, _ := fullVsQuick.Float64()
-	full, _ := fullBig.Float64()
+func getPct(diffBig *big.Int, referenceBig *big.Int, agent *invariants.Agent) (pctNum float64, pctStr string) {
+	diffBig = new(big.Int).Abs(diffBig)
+	diff, _ := diffBig.Float64()
+	reference, _ := referenceBig.Float64()
 	pctStr = "n/a"
-	if full > 0 {
-		pctNum = diff / full * 100
+	if reference > 0 {
+		pctNum = diff / reference * 100
 		pctStr = fmt.Sprintf("%0.3f%%", pctNum)
 	}
 	if agent != nil && agent.PrincipalBalance.Sign() == 1 {
