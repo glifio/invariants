@@ -401,9 +401,9 @@ loopFull:
 			prefix, countStr, miner, util.ToFIL(minerDetails.TerminationPenalty))
 
 		// Assert that db value from API is withing range
-		pctApi, _ := getPct(apiDiff, fullResult.SectorStats.TerminationPenalty, agent)
+		pctApi, _ := getPct(apiDiff, quickResult.SectorStats.TerminationPenalty, agent)
 		if pctApi > maxPctVariance {
-			fmt.Printf("%sMiner %v%v: Assertion failed: API vs Full %0.3f%% > %0.3f%%\n",
+			fmt.Printf("%sMiner %v%v: Assertion failed: API vs Quick %0.3f%% > %0.3f%%\n",
 				prefix, countStr, miner, pctApi, maxPctVariance)
 			failCount++
 		}
