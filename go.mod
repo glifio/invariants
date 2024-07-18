@@ -2,6 +2,9 @@ module github.com/glifio/invariants
 
 go 1.22.0
 
+replace github.com/glifio/go-pools => ../go-pools
+replace github.com/filecoin-project/go-jsonrpc => ../go-jsonrpc
+
 require (
 	github.com/ethereum/go-ethereum v1.12.0
 	github.com/filecoin-project/go-address v1.1.0
