@@ -37,8 +37,8 @@ jobs:
     - name: Test iFIL Total Supply
       run: ./invariants --archive=false ifil-total-supply
 
-    - name: Test Agent Balances (random)
-      run: ./invariants --archive=false agent-balances --random 10
+    - name: Test Agent Balances (all)
+      run: ./invariants --archive=false agent-balances --all
 
     - name: Test Metrics with Miner Count
       run: ./invariants --archive=false metrics --miner-count
