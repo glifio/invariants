@@ -261,6 +261,7 @@ func binarySearch(
 	goodIdx int,
 	badIdx int,
 ) {
+	// goodIdx = max(goodIdx, 231)
 	fmt.Printf("Binary searching between %d and %d\n", goodIdx, badIdx)
 	searchIdx := (goodIdx + badIdx) / 2
 	if searchIdx == goodIdx || searchIdx == badIdx {
