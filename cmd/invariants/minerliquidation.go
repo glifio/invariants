@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/glifio/go-pools/econ"
 	"github.com/glifio/go-pools/terminate"
 	"github.com/glifio/go-pools/util"
 	"github.com/glifio/invariants"
@@ -275,14 +276,14 @@ func checkTerminations(
 
 	// Quick
 	start := time.Now()
-	quickResult, err := terminate.PreviewTerminateSectorsQuick(ctx, &lotus.Api, miner, ts)
+	quickResult, err := econ.EstimateTerminationFeeMiner(ctx, &lotus.Api, miner, ts)
 	if err != nil {
 		return true, err
 	}
 	elapsed := time.Since(start).Seconds()
 	fmt.Printf("%sMiner %s%v @%d: Quick method: %0.3f FIL (%d of %d sectors, offchain, %0.1fs)\n",
-		prefix, countStr, miner, epoch, util.ToFIL(quickResult.SectorStats.TerminationPenalty),
-		quickResult.SectorsTerminated, quickResult.SectorsCount, elapsed)
+		prefix, countStr, miner, epoch, util.ToFIL(quickResult.EstimatedTerminationFee),
+		quickResult.SampledSectors, quickResult.LiveSectors, elapsed)
 
 	// Sampled, onchain
 	var sampledResult *terminate.PreviewTerminateSectorsReturn
@@ -326,7 +327,7 @@ loopSampled:
 		}
 	}
 
-	if sampledResult.SectorStats.TerminationPenalty.Cmp(quickResult.SectorStats.TerminationPenalty) != 0 {
+	if sampledResult.SectorStats.TerminationPenalty.Cmp(quickResult.EstimatedTerminationFee) != 0 {
 		fmt.Printf("%sMiner %v%v: Assertion failed: Quick vs Sampled don't match\n",
 			prefix, countStr, miner)
 		failCount++
@@ -394,14 +395,14 @@ loopFull:
 	}
 
 	if minerDetails != nil {
-		apiDiff := new(big.Int).Sub(minerDetails.TerminationPenalty, quickResult.SectorStats.TerminationPenalty)
+		apiDiff := new(big.Int).Sub(minerDetails.TerminationPenalty, quickResult.EstimatedTerminationFee)
 		// For testing assertion
 		// apiDiff, _ = new(big.Int).SetString("650000000000000000", 10)
 		fmt.Printf("%sMiner %s%v: Termination penalty via API: %0.3f FIL\n",
 			prefix, countStr, miner, util.ToFIL(minerDetails.TerminationPenalty))
 
 		// Assert that db value from API is withing range
-		pctApi, _ := getPct(apiDiff, quickResult.SectorStats.TerminationPenalty, agent)
+		pctApi, _ := getPct(apiDiff, quickResult.EstimatedTerminationFee, agent)
 		if pctApi > maxPctVariance {
 			fmt.Printf("%sMiner %v%v: Assertion failed: API vs Quick %0.3f%% > %0.3f%%\n",
 				prefix, countStr, miner, pctApi, maxPctVariance)
@@ -412,12 +413,12 @@ loopFull:
 	// Variances
 	fullVsQuick := new(big.Int).Sub(
 		fullResult.SectorStats.TerminationPenalty,
-		quickResult.SectorStats.TerminationPenalty,
+		quickResult.EstimatedTerminationFee,
 	)
 
 	if fullVsQuick.Sign() == 0 {
 		fmt.Printf("%sMiner %s%v: Quick method and Full method agree (%d/%d sectors).\n",
-			prefix, countStr, miner, quickResult.SectorsTerminated, quickResult.SectorsCount)
+			prefix, countStr, miner, quickResult.SampledSectors, quickResult.LiveSectors)
 	} else {
 		var pctNum float64
 		var pctStr string
@@ -426,12 +427,12 @@ loopFull:
 			pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
 			fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s, %d/%d sectors)\n",
 				prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
-				quickResult.SectorsTerminated, quickResult.SectorsCount)
+				quickResult.SampledSectors, quickResult.LiveSectors)
 		} else {
 			pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
 			fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s, %d/%d sectors)\n",
 				prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
-				quickResult.SectorsTerminated, quickResult.SectorsCount)
+				quickResult.SampledSectors, quickResult.LiveSectors)
 		}
 		if pctNum > maxPctVariance {
 			fmt.Printf("%sMiner %v%v: Assertion failed: Quick vs Full diff %0.3f%% > %0.3f%%\n",

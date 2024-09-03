@@ -9,7 +9,6 @@ require (
 	github.com/filecoin-project/go-jsonrpc v0.3.2
 	github.com/filecoin-project/go-state-types v0.14.0
 	github.com/filecoin-project/lotus v1.28.1
-	github.com/glifio/go-pools v1.0.3-0.20240807013523-4f5a1b525b15
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -60,6 +59,7 @@ require (
 	github.com/filecoin-project/specs-actors/v8 v8.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gbrlsnchs/jwt/v3 v3.0.1 // indirect
+	github.com/glifio/go-pools v1.0.4-0.20240903053507-d204955845ab // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.5 // indirect
