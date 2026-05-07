@@ -18,6 +18,7 @@ type MetricsJSON struct {
 	Timestamp                 uint64 `json:"timestamp"`
 	PoolTotalAssets           string `json:"poolTotalAssets"`
 	PoolTotalBorrowed         string `json:"poolTotalBorrowed"`
+	PoolAccruedInterest       string `json:"poolAccruedInterest"`
 	PoolTotalBorrowableAssets string `json:"poolTotalBorrowableAssets"`
 	PoolExitReserve           string `json:"poolExitReserve"`
 	TotalAgentCount           uint64 `json:"totalAgentCount"`
@@ -35,6 +36,10 @@ type MetricsResult struct {
 	Timestamp                 uint64
 	PoolTotalAssets           *big.Int
 	PoolTotalBorrowed         *big.Int
+	PoolAccruedInterest       *big.Int // API: net interest = locked()+interest() decomposition; Node: (lp.accrued-lp.paid) - treasuryFeesOwed
+	PoolLiquidAssets          *big.Int // Node: getLiquidAssets(). API side derived as PoolTotalAssets - PoolAccruedInterest - PoolTotalBorrowed.
+	PoolGrossUnpaidInterest   *big.Int // Node: lp.accrued - lp.paid. API side: not exposed (nil).
+	PoolTreasuryFeesOwed      *big.Int // Node: treasuryFeesOwed. API side: not exposed (nil).
 	PoolTotalBorrowableAssets *big.Int
 	PoolExitReserve           *big.Int
 	TotalAgentCount           uint64
@@ -90,6 +95,12 @@ func getMetrics(ctx context.Context, url string) (*MetricsResult, error) {
 	poolTotalAssets.SetString(response.PoolTotalAssets, 10)
 	poolTotalBorrowed := big.NewInt(0)
 	poolTotalBorrowed.SetString(response.PoolTotalBorrowed, 10)
+	poolAccruedInterest := big.NewInt(0)
+	poolAccruedInterest.SetString(response.PoolAccruedInterest, 10)
+	// API doesn't expose getLiquidAssets directly; derive it from
+	// totalAssets - accruedInterest - totalBorrowed (= our locked() - totalBorrowed).
+	poolLiquidAssets := new(big.Int).Sub(poolTotalAssets, poolAccruedInterest)
+	poolLiquidAssets.Sub(poolLiquidAssets, poolTotalBorrowed)
 	poolTotalBorrowableAssets := big.NewInt(0)
 	poolTotalBorrowableAssets.SetString(response.PoolTotalBorrowableAssets, 10)
 	poolExitReserve := big.NewInt(0)
@@ -112,6 +123,8 @@ func getMetrics(ctx context.Context, url string) (*MetricsResult, error) {
 		Timestamp:                 response.Timestamp,
 		PoolTotalAssets:           poolTotalAssets,
 		PoolTotalBorrowed:         poolTotalBorrowed,
+		PoolAccruedInterest:       poolAccruedInterest,
+		PoolLiquidAssets:          poolLiquidAssets,
 		PoolTotalBorrowableAssets: poolTotalBorrowableAssets,
 		PoolExitReserve:           poolExitReserve,
 		TotalAgentCount:           response.TotalAgentCount,
@@ -126,14 +139,12 @@ func getMetrics(ctx context.Context, url string) (*MetricsResult, error) {
 	return &result, nil
 }
 
-// GetMetricsFromNode calls the Lotus node to get the metrics
+// GetMetricsFromNode calls the Lotus node to get the metrics at the
+// exact height passed in. Reads all the components of the totalAssets
+// identity (totalAssets = liquid + totalBorrowed + grossUnpaid - treasuryFeesOwed)
+// so the caller can decompose a divergence from the API.
 func GetMetricsFromNode(ctx context.Context, height uint64) (*MetricsResult, uint64, error) {
 	sdk := singleton.PoolsSDK
-
-	height, err := getNextEpoch(ctx, height)
-	if err != nil {
-		return nil, height, err
-	}
 
 	ethClient, err := sdk.Extern().ConnectEthClient()
 	if err != nil {
@@ -160,6 +171,27 @@ func GetMetricsFromNode(ctx context.Context, height uint64) (*MetricsResult, uin
 		return nil, height, err
 	}
 
+	liquidAssets, err := poolCaller.GetLiquidAssets(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
+	if err != nil {
+		return nil, height, err
+	}
+
+	lpRewards, err := poolCaller.LpRewards(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
+	if err != nil {
+		return nil, height, err
+	}
+	grossUnpaid := new(big.Int).Sub(lpRewards.Accrued, lpRewards.Paid)
+
+	treasuryFeesOwed, err := poolCaller.TreasuryFeesOwed(&bind.CallOpts{Context: ctx, BlockNumber: blockNumber})
+	if err != nil {
+		return nil, height, err
+	}
+
+	// Net accrued LP-portion-of-interest that totalAssets contributes:
+	//   contribution = grossUnpaid - treasuryFeesOwed
+	// Matches the API's PoolAccruedInterest exactly when our SQL is right.
+	accruedInterest := new(big.Int).Sub(grossUnpaid, treasuryFeesOwed)
+
 	agentFactory := sdk.Query().AgentFactory()
 
 	agentFactoryCaller, err := abigen.NewAgentFactoryCaller(agentFactory, ethClient)
@@ -172,22 +204,15 @@ func GetMetricsFromNode(ctx context.Context, height uint64) (*MetricsResult, uin
 		return nil, height, err
 	}
 
-	/*
-		minerRegistry := sdk.Query().MinerRegistry()
-
-		minerRegistryCaller, err := abigen.NewMinerRegistryCaller(minerRegistry, ethClient)
-		if err != nil {
-			return nil, err
-		}
-
-		minerRegistryCaller.MinersCount()
-	*/
-
 	result := MetricsResult{
 		Height:                    height,
 		Timestamp:                 0, // unused
 		PoolTotalAssets:           totalAssets,
 		PoolTotalBorrowed:         totalBorrowed,
+		PoolAccruedInterest:       accruedInterest,
+		PoolLiquidAssets:          liquidAssets,
+		PoolGrossUnpaidInterest:   grossUnpaid,
+		PoolTreasuryFeesOwed:      treasuryFeesOwed,
 		PoolTotalBorrowableAssets: nil, // unused
 		PoolExitReserve:           nil, // unused
 		TotalAgentCount:           agentCount.Uint64(),
