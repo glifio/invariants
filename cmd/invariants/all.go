@@ -67,8 +67,12 @@ func runAll(cmd *cobra.Command, _ []string) {
 	children = []child{
 		{"pool metrics", append([]string{"pool", "metrics", "--tolerance", tolStr}, common...)},
 		{"agent state", append([]string{"agent", "state", "--tolerance", tolStr}, common...)},
-		// TODO: add `pool ifil` (per-depositor), `glf`, `lpplus`, `spplus`,
-		// `hedgey`, `miners` once each lands.
+		{"pool lpplus", append([]string{"pool", "lpplus"}, common...)},
+		{"pool spplus", append([]string{"pool", "spplus"}, common...)},
+		{"agent dtl", append([]string{"agent", "dtl", "--all"}, common...)},
+		// TODO: add `pool ifil --per-depositor`, `pool glf --per-holder`,
+		// `hedgey`, `miners` once each is wired with a binary pass/fail
+		// suitable for the aggregate gate.
 	}
 
 	results := make([]checkResult, 0, len(children))
