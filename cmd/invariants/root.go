@@ -55,6 +55,7 @@ func init() {
 	viper.BindEnv("query_addr")
 	viper.BindEnv("invariants_query_addr")
 	viper.BindEnv("glf_addr")
+	viper.BindEnv("wfil_addr")
 	viper.BindEnv("postgres")
 	viper.BindEnv("discord_webhook_url")
 	viper.BindEnv("discord_webhook_url_errors")
