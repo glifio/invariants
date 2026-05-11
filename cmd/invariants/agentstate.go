@@ -17,15 +17,14 @@ import (
 func newAgentStateCmd(use string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
-		Short: "Compare per-agent state (principal, cursor, owner, level) between DB and contract",
+		Short: "Compare per-agent state (principal, cursor, interest) between DB and contract",
 		Long: `Reads each agent's state from the indexer DB and from the v2 pool +
 Query.sol contracts at the same height, and reports per-agent
-mismatches. The four core invariants:
+mismatches. The core invariants:
 
-  principal   = sum(agent_tx.principal where height ≤ H)  vs  pool.getAgentBorrowed(id)
-  epochsPaid  = latest agent_cursor.epochs_paid ≤ H        vs  Query.GetAgentsEpochsPaid(addr)
-  owner       = agents.owner                                vs  Query.GetAgentOwners(addr)
-  level       = agents.level (if tracked)                   vs  Query.GetAgentsLevels(id)
+  principal   = sum(agent_tx.principal where height ≤ H)              vs  pool.getAgentBorrowed(id)
+  epochsPaid  = latest agent_cursor.epochs_paid ≤ H                    vs  Query.GetAgentsEpochsPaid(addr)
+  interest    = calculate_interest(H, rate(), principal, epochs_paid)  vs  Query.GetAgentInterestOwed(id)
 
 Plus a sanity cross-check: agents.epochs_paid (the in-place column
 the indexer maintains) vs the latest agent_cursor row for that
@@ -50,18 +49,16 @@ func runAgentState(cmd *cobra.Command, args []string) {
 	if postgresURL == "" {
 		log.Fatal("POSTGRES env var (or postgres= in mainnet.env) must be set for agent state checks")
 	}
-	queryAddrStr := viper.GetString("query_addr")
-	if queryAddrStr == "" {
-		log.Fatal("QUERY_ADDR must be set for agent state checks")
+	invQueryAddrStr := viper.GetString("invariants_query_addr")
+	if invQueryAddrStr == "" {
+		log.Fatal("INVARIANTS_QUERY_ADDR must be set for agent state checks (see contracts/ for deploy)")
 	}
-	queryAddr := common.HexToAddress(queryAddrStr)
+	invQueryAddr := common.HexToAddress(invQueryAddrStr)
 
 	if err := initSingleton(ctx); err != nil {
 		log.Fatal(err)
 	}
 	sdk := singleton.PoolsSDK
-	poolAddr := sdk.Query().InfinityPool()
-	routerAddr := sdk.Query().Router()
 
 	epoch, _ := cmd.Flags().GetUint64("epoch")
 	if epoch == 0 {
@@ -109,7 +106,7 @@ func runAgentState(cmd *cobra.Command, args []string) {
 	}
 	defer ethClient.Close()
 
-	chainStates, err := invariants.FetchAgentStateContract(ctx, ethClient, poolAddr, routerAddr, queryAddr, epoch, ids, addrs)
+	chainStates, err := invariants.FetchAgentStateContract(ctx, ethClient, invQueryAddr, epoch, ids, addrs)
 	if err != nil {
 		log.Fatalf("contract fetch: %v", err)
 	}
@@ -164,9 +161,17 @@ func compareAgentState(db *invariants.AgentStateDB, chain *invariants.AgentState
 		}
 	}
 
-	// owner / level — DB doesn't track them today; print contract value
-	// for context only. (If indexer ever stores agents.owner / agents.level
-	// add a real compare here.)
+	// interest — DB-derived calculate_interest(h, rate, principal, epochs_paid)
+	// vs Query.GetAgentInterestOwed(id). Should match within tolerance (the
+	// contract's per-call rounding can differ by a few wei from our SQL math).
+	if db.Interest != nil && chain.GetAgentInterestOwed != nil {
+		if !cmpBig(db.Interest, chain.GetAgentInterestOwed, tolerance) {
+			fmt.Printf("  agent %d: interest MISMATCH  db=%v  chain=%v  diff=%v\n",
+				id, db.Interest, chain.GetAgentInterestOwed,
+				new(big.Int).Sub(db.Interest, chain.GetAgentInterestOwed))
+			pass = false
+		}
+	}
 
 	// agents.epochs_paid (in-place) vs latest agent_cursor — internal sanity.
 	if db.EpochsPaid != nil && db.AgentsEpoch != nil &&
@@ -175,10 +180,6 @@ func compareAgentState(db *invariants.AgentStateDB, chain *invariants.AgentState
 			id, db.AgentsEpoch, db.EpochsPaid)
 	}
 
-	if pass {
-		fmt.Printf("  agent %d: ok  principal=%v cursor=%v owner=%s level=%v\n",
-			id, db.Principal, chain.EpochsPaid, chain.Owner.Hex(), chain.Level)
-	}
 	return pass
 }
 

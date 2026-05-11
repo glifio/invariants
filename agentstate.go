@@ -9,34 +9,27 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	pools "github.com/glifio/go-pools/abigen"
 	"github.com/glifio/invariants/abigen"
 	_ "github.com/lib/pq"
 )
 
 // AgentStateDB is the per-agent state we hold in the indexer DB.
-//
-// The agents table does NOT track owner or level today, so those are
-// only fetched from the contract and printed (no DB-vs-chain compare).
-// If the indexer schema gets an `owner` and `level` column, fill them
-// here and add the comparison.
 type AgentStateDB struct {
 	ID          uint64
 	Address     common.Address
 	Principal   *big.Int // sum(agent_tx.principal where height ≤ H)
 	EpochsPaid  *big.Int // latest agent_cursor.epochs_paid where height ≤ H
 	AgentsEpoch *big.Int // agents.epochs_paid (the in-place column, for self-consistency check)
+	Interest    *big.Int // calculate_interest(h, rate(), principal, epochs_paid) — DB-derived
 }
 
 // AgentStateContract is the contract's view at the same height.
 type AgentStateContract struct {
 	ID                  uint64
 	Address             common.Address
-	Owner               common.Address
 	Principal           *big.Int // pool.getAgentBorrowed(id)
 	EpochsPaid          *big.Int // Query.GetAgentsEpochsPaid([addr])[0]
-	GetAgentInterestOwed *big.Int // contract gross interest owed (for cross-check)
-	Level               *big.Int // Query.GetAgentsLevels([id])[0]
+	GetAgentInterestOwed *big.Int // Query.GetAgentInterestOwed([id])[0]
 }
 
 // FetchAgentStateDB reads the indexer DB for one or more agents at h.
@@ -92,6 +85,19 @@ func FetchAgentStateDB(ctx context.Context, postgresURL string, h uint64, agentI
 		if err != nil && err != sql.ErrNoRows {
 			return nil, fmt.Errorf("agent %d cursor: %w", id, err)
 		}
+		// DB-derived interest at h: calculate_interest(h, rate(), principal,
+		// epochs_paid). Mirrors the per-agent term inside interest(h).
+		var interestStr sql.NullString
+		err = db.QueryRowContext(ctx, `
+			SELECT COALESCE(calculate_interest($1::int, rate(),
+				(SELECT COALESCE(sum(principal),0) FROM agent_tx WHERE agent_id = $2 AND height <= $1::int),
+				(SELECT epochs_paid FROM agent_cursor WHERE agent_id = $2 AND height <= $1::int ORDER BY height DESC, idx DESC LIMIT 1)
+			), 0)::TEXT`,
+			h, id,
+		).Scan(&interestStr)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("agent %d interest: %w", id, err)
+		}
 
 		s := AgentStateDB{
 			ID:        id,
@@ -100,24 +106,21 @@ func FetchAgentStateDB(ctx context.Context, postgresURL string, h uint64, agentI
 		}
 		s.EpochsPaid = bigOrNil(cursorStr)
 		s.AgentsEpoch = bigOrNil(agentsEpoch)
+		s.Interest = bigOrZero(interestStr)
 		out = append(out, s)
 	}
 	return out, nil
 }
 
-// FetchAgentStateContract reads contract-truth state for each agent at h.
+// FetchAgentStateContract reads contract-truth state for each agent at h
+// via the InvariantsQuery batch helper — one chain RPC for all agents.
 //
-// Uses Router.GetAccount(agentID, poolID=0) for principal + cursor + defaulted —
-// it's per-agent (not batched) but it's the canonical pool account state and
-// avoids the address↔id ambiguity in Query.GetAgentsEpochsPaid.
-//
-// Uses Query.sol batches for level + owner + interest_owed where they work
-// reliably (these are read-only views and don't revert on defaulted agents
-// the way GetAgentsEpochsPaid does).
+// `invQueryAddr` must be the deployed InvariantsQuery contract; see the
+// `contracts/` directory and INVARIANTS_QUERY_ADDR in mainnet.env.
 func FetchAgentStateContract(
 	ctx context.Context,
 	ethClient *ethclient.Client,
-	poolAddr, routerAddr, queryAddr common.Address,
+	invQueryAddr common.Address,
 	height uint64,
 	agentIDs []uint64,
 	addresses []common.Address,
@@ -127,62 +130,29 @@ func FetchAgentStateContract(
 	}
 	opts := &bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(height)}
 
-	// Batches via Query.sol with per-agent fallback on revert.
-	q, err := abigen.NewQueryCaller(queryAddr, ethClient)
+	q, err := abigen.NewInvariantsQueryCaller(invQueryAddr, ethClient)
 	if err != nil {
-		return nil, fmt.Errorf("query caller: %w", err)
+		return nil, fmt.Errorf("invariants query caller: %w", err)
 	}
-	ids32 := make([]uint32, len(agentIDs))
+	idsBig := make([]*big.Int, len(agentIDs))
 	for i, id := range agentIDs {
-		ids32[i] = uint32(id)
+		idsBig[i] = new(big.Int).SetUint64(id)
 	}
-	levels, err := q.GetAgentsLevels(opts, ids32)
+	states, err := q.GetAgentsState(opts, idsBig)
 	if err != nil {
-		levels = make([]*big.Int, len(ids32))
-		for i, id := range ids32 {
-			if r, e := q.GetAgentsLevels(opts, []uint32{id}); e == nil {
-				levels[i] = r[0]
-			}
-		}
+		return nil, fmt.Errorf("InvariantsQuery.GetAgentsState: %w", err)
 	}
-	interestOwed, err := q.GetAgentInterestOwed(opts, ids32)
-	if err != nil {
-		interestOwed = make([]*big.Int, len(ids32))
-		for i, id := range ids32 {
-			if r, e := q.GetAgentInterestOwed(opts, []uint32{id}); e == nil {
-				interestOwed[i] = r[0]
-			}
-		}
-	}
-	owners := make([]common.Address, len(addresses))
-	for i, addr := range addresses {
-		if r, e := q.GetAgentOwners(opts, []common.Address{addr}); e == nil {
-			owners[i] = r[0]
-		}
-	}
-
-	// Per-agent canonical account state via Router. principal + cursor +
-	// defaulted come from one struct read.
-	router, err := pools.NewRouterCaller(routerAddr, ethClient)
-	if err != nil {
-		return nil, fmt.Errorf("router caller: %w", err)
+	if len(states) != len(agentIDs) {
+		return nil, fmt.Errorf("InvariantsQuery returned %d states for %d agents", len(states), len(agentIDs))
 	}
 	out := make([]AgentStateContract, len(agentIDs))
 	for i, id := range agentIDs {
-		acct, err := router.GetAccount(opts,
-			new(big.Int).SetUint64(id),
-			big.NewInt(0)) // poolID 0 = the v2 InfinityPool
-		if err != nil {
-			return nil, fmt.Errorf("Router.GetAccount(%d): %w", id, err)
-		}
 		out[i] = AgentStateContract{
 			ID:                   id,
 			Address:              addresses[i],
-			Owner:                owners[i],
-			Principal:            acct.Principal,
-			EpochsPaid:           acct.EpochsPaid,
-			GetAgentInterestOwed: interestOwed[i],
-			Level:                levels[i],
+			Principal:            states[i].Principal,
+			EpochsPaid:           states[i].EpochsPaid,
+			GetAgentInterestOwed: states[i].InterestOwed,
 		}
 	}
 	return out, nil
