@@ -67,6 +67,7 @@ func runAll(cmd *cobra.Command, _ []string) {
 	children = []child{
 		{"pool metrics", append([]string{"pool", "metrics", "--tolerance", tolStr}, common...)},
 		{"agent state", append([]string{"agent", "state", "--tolerance", tolStr}, common...)},
+		{"agent balances", append([]string{"agent", "balances", "--all"}, common...)},
 		{"pool lpplus", append([]string{"pool", "lpplus"}, common...)},
 		{"pool spplus", append([]string{"pool", "spplus"}, common...)},
 		{"agent dtl", append([]string{"agent", "dtl", "--all"}, common...)},
