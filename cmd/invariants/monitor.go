@@ -143,7 +143,7 @@ type tickResult struct {
 // runOneTick executes every child check once and posts a Discord
 // rollup capturing what just happened.
 func (d *monitorDaemon) runOneTick(ctx context.Context) {
-	children := monitorChildren(d.epoch, d.tolerance)
+	children := Checks(d.epoch, d.tolerance)
 	results := make([]tickResult, 0, len(children))
 
 	tickStart := time.Now()
@@ -237,30 +237,6 @@ func (d *monitorDaemon) runChild(ctx context.Context, ch checkSpec) tickResult {
 		pass:     err == nil,
 		output:   buf.String(),
 		duration: time.Since(start),
-	}
-}
-
-type checkSpec struct {
-	name string
-	args []string
-}
-
-// monitorChildren returns the same check set as `inv all`. Mirrors the
-// list there so the two stay in lock-step. New checks should land in
-// both places (or in a shared registry once we extract one).
-func monitorChildren(epoch, tolerance uint64) []checkSpec {
-	common := []string{}
-	if epoch != 0 {
-		common = append(common, "--epoch", fmt.Sprintf("%d", epoch))
-	}
-	tolStr := fmt.Sprintf("%d", tolerance)
-	return []checkSpec{
-		{"pool metrics", append([]string{"pool", "metrics", "--tolerance", tolStr}, common...)},
-		{"agent state", append([]string{"agent", "state", "--tolerance", tolStr}, common...)},
-		{"agent balances", append([]string{"agent", "balances", "--all"}, common...)},
-		{"pool lpplus", append([]string{"pool", "lpplus"}, common...)},
-		{"pool spplus", append([]string{"pool", "spplus"}, common...)},
-		{"agent dtl", append([]string{"agent", "dtl", "--all"}, common...)},
 	}
 }
 
