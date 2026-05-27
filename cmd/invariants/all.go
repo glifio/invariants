@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -51,10 +52,17 @@ type checkResult struct {
 // checks.go::Checks so `inv all` and `inv monitor` stay in lock-step —
 // adding a new check there surfaces it in both surfaces.
 func runAll(cmd *cobra.Command, _ []string) {
+	ctx := cmd.Context()
 	epoch, _ := cmd.Flags().GetUint64("epoch")
 	tolerance, _ := cmd.Flags().GetUint64("tolerance")
 
-	children := Checks(epoch, tolerance)
+	if err := initSingleton(ctx); err != nil {
+		log.Fatal(err)
+	}
+	children, err := Checks(ctx, epoch, tolerance)
+	if err != nil {
+		log.Fatalf("inv all: build check list: %v", err)
+	}
 
 	results := make([]checkResult, 0, len(children))
 	for _, ch := range children {

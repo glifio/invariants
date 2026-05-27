@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -82,6 +83,14 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 		fmt.Fprintln(os.Stderr, "WARN: DISCORD_WEBHOOK_URL not set; daemon will run but won't post to Discord")
 	}
 
+	// Checks(ctx, ...) calls getHeadEpoch when --epoch is unset, which
+	// needs the lotus singleton. Initialize once at daemon startup
+	// rather than per-tick so a transient init failure surfaces
+	// immediately instead of being hidden behind the first tick.
+	if err := initSingleton(ctx); err != nil {
+		log.Fatalf("monitor: init singleton: %v", err)
+	}
+
 	d := &monitorDaemon{
 		interval:          interval,
 		alivenessInterval: alivenessInterval,
@@ -143,7 +152,19 @@ type tickResult struct {
 // runOneTick executes every child check once and posts a Discord
 // rollup capturing what just happened.
 func (d *monitorDaemon) runOneTick(ctx context.Context) {
-	children := Checks(d.epoch, d.tolerance)
+	children, err := Checks(ctx, d.epoch, d.tolerance)
+	if err != nil {
+		// Treat a checks-build failure as a daemon-level error rather
+		// than a check failure — log + post to the error channel and
+		// skip this tick. Don't update hysteresis state; the next
+		// tick will try again.
+		fmt.Fprintf(os.Stderr, "monitor: build check list: %v\n", err)
+		if d.errWebhook != "" {
+			_ = postDiscord(d.errWebhook,
+				fmt.Sprintf(":warning: InvariantsMonitor: failed to build check list this tick: `%v`", err))
+		}
+		return
+	}
 	results := make([]tickResult, 0, len(children))
 
 	tickStart := time.Now()
