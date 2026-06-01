@@ -145,7 +145,7 @@ func GetMetricsFromNode(ctx context.Context, height uint64) (*MetricsResult, uin
 
 	infinityPool := sdk.Query().InfinityPool()
 
-	poolCaller, err := abigen.NewInfinityPoolCaller(infinityPool, ethClient)
+	poolCaller, err := abigen.NewInfinityPoolV2Caller(infinityPool, ethClient)
 	if err != nil {
 		return nil, height, err
 	}

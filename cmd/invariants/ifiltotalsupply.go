@@ -10,64 +10,70 @@ import (
 	"github.com/spf13/viper"
 )
 
-// iFILTotalSupplyCmd represents the check-ifil-total-supply command
-var iFILTotalSupplyCmd = &cobra.Command{
-	Use:   "ifil-total-supply [--epoch <epoch>] [--find-missing]",
-	Short: "Compare the iFIL Total Supply from the API and the node",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		ctx := cmd.Context()
+func newPoolIfilCmd(use string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   use,
+		Short: "Compare the iFIL Total Supply from the API and the node",
+		Args:  cobra.NoArgs,
+		Run:   runPoolIfil,
+	}
+	cmd.Flags().Uint64("epoch", 0, "Check at epoch")
+	cmd.Flags().Bool("find-missing", false, "Find missing transactions")
+	return cmd
+}
 
-		eventsURL := viper.GetString("events_api")
+func runPoolIfil(cmd *cobra.Command, args []string) {
+	ctx := cmd.Context()
 
-		err := initSingleton(ctx)
+	eventsURL := viper.GetString("events_api")
+
+	err := initSingleton(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	epoch, err := cmd.Flags().GetUint64("epoch")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	findMissing, err := cmd.Flags().GetBool("find-missing")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if epoch == 0 {
+		epoch, err = getHeadEpoch(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
+		epoch = epoch - 2
+	}
 
-		epoch, err := cmd.Flags().GetUint64("epoch")
-		if err != nil {
-			log.Fatal(err)
-		}
+	apiTotalSupply, err := invariants.GetIFILTotalSupplyFromAPI(ctx, eventsURL, epoch)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-		findMissing, err := cmd.Flags().GetBool("find-missing")
-		if err != nil {
-			log.Fatal(err)
-		}
+	nodeTotalSupply, resultEpoch, err := invariants.GetIFILTotalSupplyFromNode(ctx, epoch)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-		if epoch == 0 {
-			epoch, err = getHeadEpoch(ctx)
-			if err != nil {
-				log.Fatal(err)
-			}
-			epoch = epoch - 2
-		}
+	// Mutate for testing
+	// nodeTotalSupply.IFILTotalSupply = big.NewInt(1234)
 
-		apiTotalSupply, err := invariants.GetIFILTotalSupplyFromAPI(ctx, eventsURL, epoch)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		nodeTotalSupply, resultEpoch, err := invariants.GetIFILTotalSupplyFromNode(ctx, epoch)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// Mutate for testing
-		// nodeTotalSupply.IFILTotalSupply = big.NewInt(1234)
-
-		if apiTotalSupply.IFILTotalSupply.Cmp(nodeTotalSupply.IFILTotalSupply) == 0 {
-			fmt.Printf("@%d: Success, iFIL total supply matches: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
-			return
-		}
-		fmt.Printf("@%d: Error, iFIL total supply from REST API doesn't match node.\n", epoch)
-		fmt.Printf("  Node @%d: %v\n", resultEpoch, nodeTotalSupply.IFILTotalSupply)
-		fmt.Printf("   API @%d: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
-		if findMissing {
-			findMissingIFILEvents(ctx, eventsURL, epoch)
-		}
-		log.Fatal("FAIL: iFIL Total Supply test had errors.")
-	},
+	if apiTotalSupply.IFILTotalSupply.Cmp(nodeTotalSupply.IFILTotalSupply) == 0 {
+		fmt.Printf("@%d: Success, iFIL total supply matches: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
+		return
+	}
+	fmt.Printf("@%d: Error, iFIL total supply from REST API doesn't match node.\n", epoch)
+	fmt.Printf("  Node @%d: %v\n", resultEpoch, nodeTotalSupply.IFILTotalSupply)
+	fmt.Printf("   API @%d: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
+	if findMissing {
+		findMissingIFILEvents(ctx, eventsURL, epoch)
+	}
+	log.Fatal("FAIL: iFIL Total Supply test had errors.")
 }
 
 const step = 10000
@@ -141,7 +147,8 @@ func searchPassingIFILTotalSupply(ctx context.Context, eventsURL string, maxEpoc
 }
 
 func init() {
-	rootCmd.AddCommand(iFILTotalSupplyCmd)
-	iFILTotalSupplyCmd.Flags().Uint64("epoch", 0, "Check at epoch")
-	iFILTotalSupplyCmd.Flags().Bool("find-missing", false, "Find missing transactions")
+	flat := newPoolIfilCmd("ifil-total-supply [--epoch <epoch>] [--find-missing]")
+	flat.Deprecated = "use `inv pool ifil` instead"
+	rootCmd.AddCommand(flat)
+	poolCmd.AddCommand(newPoolIfilCmd("ifil [--epoch <epoch>] [--find-missing]"))
 }
