@@ -27,6 +27,7 @@ require (
 )
 
 require (
+	github.com/filecoin-project/specs-actors/v8 v8.0.1
 	github.com/glifio/go-pools v1.4.5-0.20251208214107-5d0fe18cd81a
 	github.com/lib/pq v1.12.3
 )
@@ -60,7 +61,6 @@ require (
 	github.com/filecoin-project/specs-actors/v5 v5.0.6 // indirect
 	github.com/filecoin-project/specs-actors/v6 v6.0.2 // indirect
 	github.com/filecoin-project/specs-actors/v7 v7.0.1 // indirect
-	github.com/filecoin-project/specs-actors/v8 v8.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gbrlsnchs/jwt/v3 v3.0.1 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
