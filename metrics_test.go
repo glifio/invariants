@@ -46,7 +46,7 @@ func TestMetrics(t *testing.T) {
 	}
 
 	height := metricsFromAPI.Height
-	metricsFromNode, err := GetMetricsFromNode(ctx, height)
+	metricsFromNode, _, err := GetMetricsFromNode(ctx, height)
 	assert.Nil(t, err)
 
 	fmt.Printf("Jim chain %+v\n", metricsFromNode)

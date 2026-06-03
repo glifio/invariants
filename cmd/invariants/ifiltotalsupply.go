@@ -4,8 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/big"
+	"sort"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/glifio/invariants"
+	"github.com/glifio/invariants/singleton"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -13,12 +17,17 @@ import (
 func newPoolIfilCmd(use string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
-		Short: "Compare the iFIL Total Supply from the API and the node",
+		Short: "Compare the iFIL Total Supply (and optionally per-depositor balances) between API and node",
 		Args:  cobra.NoArgs,
 		Run:   runPoolIfil,
 	}
 	cmd.Flags().Uint64("epoch", 0, "Check at epoch")
 	cmd.Flags().Bool("find-missing", false, "Find missing transactions")
+	cmd.Flags().Bool("per-depositor", false,
+		"Also reconcile every iFIL holder's balance vs Query.GetDepositorsIFILBalances (slow on prod; ~7-8k holders)")
+	cmd.Flags().Int("chunk", 500, "Holders per Query batch RPC (--per-depositor only)")
+	cmd.Flags().Bool("include-zero", false,
+		"Include holders whose DB balance is zero in the per-depositor check (default: skip dust)")
 	return cmd
 }
 
@@ -63,18 +72,92 @@ func runPoolIfil(cmd *cobra.Command, args []string) {
 	// Mutate for testing
 	// nodeTotalSupply.IFILTotalSupply = big.NewInt(1234)
 
-	if apiTotalSupply.IFILTotalSupply.Cmp(nodeTotalSupply.IFILTotalSupply) == 0 {
+	totalSupplyMatch := apiTotalSupply.IFILTotalSupply.Cmp(nodeTotalSupply.IFILTotalSupply) == 0
+	if totalSupplyMatch {
 		fmt.Printf("@%d: Success, iFIL total supply matches: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
-		return
+	} else {
+		fmt.Printf("@%d: Error, iFIL total supply from REST API doesn't match node.\n", epoch)
+		fmt.Printf("  Node @%d: %v\n", resultEpoch, nodeTotalSupply.IFILTotalSupply)
+		fmt.Printf("   API @%d: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
+		if findMissing {
+			findMissingIFILEvents(ctx, eventsURL, epoch)
+		}
 	}
-	fmt.Printf("@%d: Error, iFIL total supply from REST API doesn't match node.\n", epoch)
-	fmt.Printf("  Node @%d: %v\n", resultEpoch, nodeTotalSupply.IFILTotalSupply)
-	fmt.Printf("   API @%d: %v\n", epoch, apiTotalSupply.IFILTotalSupply)
-	if findMissing {
-		findMissingIFILEvents(ctx, eventsURL, epoch)
+
+	perDepositor, _ := cmd.Flags().GetBool("per-depositor")
+	chunk, _ := cmd.Flags().GetInt("chunk")
+	includeZero, _ := cmd.Flags().GetBool("include-zero")
+
+	depMismatch := 0
+	if perDepositor {
+		depMismatch = runIFILPerDepositor(ctx, epoch, chunk, includeZero)
 	}
-	log.Fatal("FAIL: iFIL Total Supply test had errors.")
+
+	if !totalSupplyMatch || depMismatch > 0 {
+		log.Fatalf("FAIL: iFIL invariants — total supply match=%v, per-depositor mismatches=%d", totalSupplyMatch, depMismatch)
+	}
 }
+
+// runIFILPerDepositor compares every (non-zero) DB-derived holder
+// balance to Query.GetDepositorsIFILBalances at the same height.
+// Returns the count of mismatches.
+func runIFILPerDepositor(ctx context.Context, epoch uint64, chunkSize int, includeZero bool) int {
+	postgresURL := viper.GetString("postgres")
+	if postgresURL == "" {
+		log.Fatal("POSTGRES env var must be set for --per-depositor")
+	}
+	queryAddrStr := viper.GetString("query_addr")
+	if queryAddrStr == "" {
+		log.Fatal("QUERY_ADDR must be set for --per-depositor")
+	}
+	queryAddr := common.HexToAddress(queryAddrStr)
+
+	dbBals, err := invariants.FetchIFILDepositorBalancesFromDB(ctx, postgresURL, epoch, includeZero)
+	if err != nil {
+		log.Fatalf("DB depositor fetch: %v", err)
+	}
+	addresses := make([]common.Address, 0, len(dbBals))
+	for addr := range dbBals {
+		addresses = append(addresses, addr)
+	}
+	// Stable order so output is deterministic for diffing across runs.
+	sort.Slice(addresses, func(i, j int) bool {
+		return addresses[i].Hex() < addresses[j].Hex()
+	})
+	fmt.Printf("\n@%d: per-depositor — checking %d holders (chunk=%d include-zero=%v)\n",
+		epoch, len(addresses), chunkSize, includeZero)
+
+	ethClient, err := singleton.PoolsSDK.Extern().ConnectEthClient()
+	if err != nil {
+		log.Fatalf("eth client: %v", err)
+	}
+	defer ethClient.Close()
+
+	chainBals, err := invariants.FetchIFILDepositorBalancesFromContract(ctx, ethClient, queryAddr, epoch, addresses, chunkSize)
+	if err != nil {
+		log.Fatalf("contract depositor fetch: %v", err)
+	}
+
+	mismatch := 0
+	zero := big.NewInt(0)
+	for _, addr := range addresses {
+		dbBal := dbBals[addr]
+		chainBal := chainBals[addr]
+		if chainBal == nil {
+			chainBal = zero
+		}
+		if dbBal.Cmp(chainBal) != 0 {
+			diff := new(big.Int).Sub(dbBal, chainBal)
+			fmt.Printf("  %s MISMATCH  db=%v  chain=%v  diff=%v\n",
+				addr.Hex(), dbBal, chainBal, diff)
+			mismatch++
+		}
+	}
+	fmt.Printf("\nPer-depositor summary: %d/%d holders match, %d mismatches\n",
+		len(addresses)-mismatch, len(addresses), mismatch)
+	return mismatch
+}
+
 
 const step = 10000
 

@@ -288,9 +288,9 @@ func checkTerminations(
 		return true, err
 	}
 	elapsed := time.Since(start).Seconds()
-	fmt.Printf("%sMiner %s%v @%d: Quick method: %0.3f FIL (%d of %d sectors, offchain, %0.1fs)\n",
+	fmt.Printf("%sMiner %s%v @%d: Quick method: %0.3f FIL (%d sectors, offchain, %0.1fs)\n",
 		prefix, countStr, miner, epoch, util.ToFIL(quickResult.EstimatedTerminationFee),
-		quickResult.SampledSectors, quickResult.LiveSectors, elapsed)
+		quickResult.LiveSectors, elapsed)
 
 	// Sampled, onchain
 	var sampledResult *terminate.PreviewTerminateSectorsReturn
@@ -319,7 +319,7 @@ loopSampled:
 		case result := <-resultCh:
 			sampledResult = result
 			elapsed = time.Since(start).Seconds()
-			fmt.Printf("%sMiner %s%v @%d: Sampled method: %0.3f FIL (%d of %d sectors, onchain, %0.1fs)\n",
+			fmt.Printf("%sMiner %s%v @%d: Sampled method: %0.3f FIL (%d sectors, onchain, %0.1fs)\n",
 				prefix, countStr, miner, epoch, util.ToFIL(sampledResult.SectorStats.TerminationPenalty),
 				sampledResult.SectorsTerminated, sampledResult.SectorsCount, elapsed)
 			break loopSampled
@@ -366,7 +366,7 @@ loopFull:
 				bar.Close()
 				bar = nil
 			}
-			fmt.Printf("%sMiner %s%v @%d: Full method: %0.3f FIL (%d of %d sectors, onchain, %s)\n",
+			fmt.Printf("%sMiner %s%v @%d: Full method: %0.3f FIL (%d sectors, onchain, %s)\n",
 				prefix, countStr, miner, epoch, util.ToFIL(fullResult.SectorStats.TerminationPenalty),
 				fullResult.SectorsTerminated, fullResult.SectorsCount, elapsedDuration)
 			break loopFull
@@ -424,22 +424,22 @@ loopFull:
 	)
 
 	if fullVsQuick.Sign() == 0 {
-		fmt.Printf("%sMiner %s%v: Quick method and Full method agree (%d/%d sectors).\n",
-			prefix, countStr, miner, quickResult.SampledSectors, quickResult.LiveSectors)
+		fmt.Printf("%sMiner %s%v: Quick method and Full method agree (%d sectors).\n",
+			prefix, countStr, miner, quickResult.LiveSectors)
 	} else {
 		var pctNum float64
 		var pctStr string
 		if fullVsQuick.Sign() == -1 {
 			fullVsQuick = new(big.Int).Abs(fullVsQuick)
 			pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
-			fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s, %d/%d sectors)\n",
+			fmt.Printf("%sMiner %s%v: Quick method overestimated: %0.3f FIL (%s, %d sectors)\n",
 				prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
-				quickResult.SampledSectors, quickResult.LiveSectors)
+				quickResult.LiveSectors)
 		} else {
 			pctNum, pctStr = getPct(fullVsQuick, fullResult.SectorStats.TerminationPenalty, agent)
-			fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s, %d/%d sectors)\n",
+			fmt.Printf("%sMiner %s%v: Quick method UNDERESTIMATED: %0.3f FIL (%s, %d sectors)\n",
 				prefix, countStr, miner, util.ToFIL(fullVsQuick), pctStr,
-				quickResult.SampledSectors, quickResult.LiveSectors)
+				quickResult.LiveSectors)
 		}
 		if pctNum > maxPctVariance {
 			fmt.Printf("%sMiner %v%v: Assertion failed: Quick vs Full diff %0.3f%% > %0.3f%%\n",

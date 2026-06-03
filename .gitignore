@@ -4,3 +4,8 @@ SETENV
 /invariants
 /inv
 
+# foundry build/test artifacts (regeneratable from contracts/src + lib)
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
