@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -47,33 +48,20 @@ type checkResult struct {
 	duration time.Duration
 }
 
-// runAll: list of (subcommand args) to run. Add new checks here as
-// invariants land. Each entry should produce a binary result and
-// print enough detail on failure that an operator can act on it.
+// runAll: list of (subcommand args) to run. The canonical list lives in
+// checks.go::Checks so `inv all` and `inv monitor` stay in lock-step —
+// adding a new check there surfaces it in both surfaces.
 func runAll(cmd *cobra.Command, _ []string) {
+	ctx := cmd.Context()
 	epoch, _ := cmd.Flags().GetUint64("epoch")
 	tolerance, _ := cmd.Flags().GetUint64("tolerance")
 
-	type child struct {
-		name string
-		args []string
+	if err := initSingleton(ctx); err != nil {
+		log.Fatal(err)
 	}
-	var children []child
-	common := []string{}
-	if epoch != 0 {
-		common = append(common, "--epoch", fmt.Sprintf("%d", epoch))
-	}
-	tolStr := fmt.Sprintf("%d", tolerance)
-	children = []child{
-		{"pool metrics", append([]string{"pool", "metrics", "--tolerance", tolStr}, common...)},
-		{"agent state", append([]string{"agent", "state", "--tolerance", tolStr}, common...)},
-		{"agent balances", append([]string{"agent", "balances", "--all"}, common...)},
-		{"pool lpplus", append([]string{"pool", "lpplus"}, common...)},
-		{"pool spplus", append([]string{"pool", "spplus"}, common...)},
-		{"agent dtl", append([]string{"agent", "dtl", "--all"}, common...)},
-		// TODO: add `pool ifil --per-depositor`, `pool glf --per-holder`,
-		// `hedgey`, `miners` once each is wired with a binary pass/fail
-		// suitable for the aggregate gate.
+	children, err := Checks(ctx, epoch, tolerance)
+	if err != nil {
+		log.Fatalf("inv all: build check list: %v", err)
 	}
 
 	results := make([]checkResult, 0, len(children))

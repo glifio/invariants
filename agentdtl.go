@@ -90,7 +90,6 @@ func FetchAgentDTLs(
 	ts *types.TipSet,
 	bufferBps uint64,
 	workers int,
-	progress func(done, total int, last AgentDTL),
 ) ([]AgentDTL, error) {
 	if len(agentIDs) != len(addresses) {
 		return nil, fmt.Errorf("agentIDs and addresses must align (got %d, %d)", len(agentIDs), len(addresses))
@@ -139,9 +138,7 @@ func FetchAgentDTLs(
 	close(jobs)
 
 	var (
-		wg   sync.WaitGroup
-		mu   sync.Mutex
-		done int
+		wg sync.WaitGroup
 	)
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
@@ -150,13 +147,6 @@ func FetchAgentDTLs(
 			for j := range jobs {
 				r := computeOne(ctx, sdk, lapi, agentIDs[j.i], addresses[j.i], dtlInputs[j.i], ts, height, tiers, globals, bufferBps)
 				out[j.i] = r
-				if progress != nil {
-					mu.Lock()
-					done++
-					d := done
-					mu.Unlock()
-					progress(d, len(agentIDs), r)
-				}
 			}
 		}()
 	}

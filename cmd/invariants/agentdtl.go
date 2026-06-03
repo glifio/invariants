@@ -121,28 +121,13 @@ func runAgentDTL(cmd *cobra.Command, args []string) {
 	fmt.Printf("Agent DTL @%d (n=%d, buffer=%d bps, concurrency=%d)\n",
 		epoch, len(ids), bufferBps, concurrency)
 
-	progress := func(done, total int, last invariants.AgentDTL) {
-		// Stream a one-liner per completion to stderr so a long --all
-		// run doesn't appear hung. Mark non-OK rows so they stand out.
-		mark := "."
-		switch last.Severity {
-		case invariants.DTLOverMax, invariants.DTLNoLV:
-			mark = "X"
-		case invariants.DTLWarn:
-			mark = "!"
-		case invariants.DTLError:
-			mark = "?"
-		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "  [%d/%d] agent %d %s\n", done, total, last.AgentID, mark)
-	}
-
 	invQueryAddrStr := viper.GetString("invariants_query_addr")
 	if invQueryAddrStr == "" {
 		log.Fatal("INVARIANTS_QUERY_ADDR must be set in mainnet.env")
 	}
 	invQueryAddr := common.HexToAddress(invQueryAddrStr)
 
-	dtls, err := invariants.FetchAgentDTLs(ctx, sdk, invQueryAddr, ids, addrs, ts, bufferBps, concurrency, progress)
+	dtls, err := invariants.FetchAgentDTLs(ctx, sdk, invQueryAddr, ids, addrs, ts, bufferBps, concurrency)
 	if err != nil {
 		log.Fatalf("FetchAgentDTLs: %v", err)
 	}

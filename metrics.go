@@ -52,12 +52,6 @@ type MetricsResult struct {
 	TotalMinerEDR             *big.Int
 }
 
-// GetMetricsFromAPI calls the REST API to get the metrics
-func GetMetricsFromAPI(ctx context.Context, eventsURL string) (*MetricsResult, error) {
-	url := fmt.Sprintf("%s/metrics", eventsURL)
-	return getMetrics(ctx, url)
-}
-
 // GetMetricsFromAPIAtHeight calls the REST API to get the metrics
 func GetMetricsFromAPIAtHeight(ctx context.Context, eventsURL string, height uint64) (*MetricsResult, error) {
 	url := fmt.Sprintf("%s/metrics/%d", eventsURL, height)
