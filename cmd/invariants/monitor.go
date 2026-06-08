@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -21,41 +20,39 @@ import (
 )
 
 // monitorCmd: long-running daemon. Runs the same check set as `inv all`
-// on a ticker, posts results to a Discord webhook, applies hysteresis
-// so a single transient RPC blip doesn't page, and emits a daily
-// aliveness ping when everything's green.
+// on a ticker and posts every tick's result to a Discord webhook.
 //
-// Replaces the admin-cli `monitor` daemon. Designed to drop into the
-// existing monitor k8s deployment (long-lived, restarts on crash, env
-// vars for webhooks).
+// No hysteresis, no aliveness gating — every tick produces a Discord
+// message. Earlier versions suppressed "still failing" ticks once the
+// initial page had fired; that hid output changes (e.g. agent dtl
+// going from 3 over → 2 over → 4 over) and turned multi-day failures
+// into 1-message events. Posting every tick makes the channel itself
+// the heartbeat: silence means the daemon is down, two messages a day
+// at --interval 12h means it's alive.
 //
 // Knobs:
 //
-//	--interval N      tick cadence (default 24h; can shorten via env)
-//	--once            run one tick and exit (for testing / cron mode)
-//	--fail-threshold  page only after this many consecutive same-check
-//	                  failures (default 2 — kills RPC flapping)
-//	--epoch / --tolerance  forwarded to children, same semantics as `inv all`
+//	--interval N      tick cadence (default 12h)
+//	--once            run a single tick and exit (for testing / cron mode)
+//	--epoch           pin checks to this epoch (default: head-3 each tick)
+//	--tolerance       wei tolerance forwarded to children
 //
 // Env / config:
 //
-//	DISCORD_WEBHOOK_URL              channel for results + aliveness
+//	DISCORD_WEBHOOK_URL              channel for tick rollups
 //	DISCORD_WEBHOOK_URL_ERRORS       (optional) separate channel for
 //	                                 unexpected daemon-level errors
 //	                                 (defaults to DISCORD_WEBHOOK_URL)
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
-	Short: "Run all invariant checks on a ticker, post results to Discord",
+	Short: "Run all invariant checks on a ticker, post every result to Discord",
 	Long: `Long-running daemon that periodically runs every invariant check
-(same set as ` + "`inv all`" + `) and reports to a Discord webhook.
+(same set as ` + "`inv all`" + `) and reports each result to a Discord webhook.
 
-Hysteresis: a check has to fail two consecutive ticks before it pages,
-which kills false alerts from transient RPC blips. State resets as
-soon as the check returns to green.
-
-Aliveness: once per --aliveness-interval (default 24h) the daemon
-emits a single "all green" message even when nothing changed, so an
-operator can tell the loop is running.
+Every tick posts: an all-green rollup when every check passes, or a
+per-check failure rollup with the check's output when one or more
+fail. The channel itself is the heartbeat — visible cadence in the
+log means the daemon is alive; silence means it isn't.
 
 Designed to drop into the same k8s deployment that previously ran
 ` + "`admin-cli monitor`" + `.`,
@@ -69,8 +66,6 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 
 	interval, _ := cmd.Flags().GetDuration("interval")
 	once, _ := cmd.Flags().GetBool("once")
-	failThreshold, _ := cmd.Flags().GetInt("fail-threshold")
-	alivenessInterval, _ := cmd.Flags().GetDuration("aliveness-interval")
 	epoch, _ := cmd.Flags().GetUint64("epoch")
 	tolerance, _ := cmd.Flags().GetUint64("tolerance")
 
@@ -92,14 +87,11 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 	}
 
 	d := &monitorDaemon{
-		interval:          interval,
-		alivenessInterval: alivenessInterval,
-		webhook:           webhook,
-		errWebhook:        errWebhook,
-		failThreshold:     failThreshold,
-		state:             make(map[string]int),
-		epoch:             epoch,
-		tolerance:         tolerance,
+		interval:   interval,
+		webhook:    webhook,
+		errWebhook: errWebhook,
+		epoch:      epoch,
+		tolerance:  tolerance,
 	}
 
 	if once {
@@ -107,8 +99,8 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 		return
 	}
 
-	fmt.Printf("InvariantsMonitor starting: interval=%s aliveness=%s fail-threshold=%d webhook=%s\n",
-		interval, alivenessInterval, failThreshold, redactURL(webhook))
+	fmt.Printf("InvariantsMonitor starting: interval=%s webhook=%s\n",
+		interval, redactURL(webhook))
 	d.postOK("InvariantsMonitor starting up. interval=" + interval.String())
 
 	// First tick immediately, then on the ticker.
@@ -129,17 +121,11 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 }
 
 type monitorDaemon struct {
-	interval          time.Duration
-	alivenessInterval time.Duration
-	webhook           string
-	errWebhook        string
-	failThreshold     int
-	epoch             uint64
-	tolerance         uint64
-
-	mu                sync.Mutex
-	state             map[string]int // check name → consecutive-fail count
-	lastAlivenessPing time.Time
+	interval   time.Duration
+	webhook    string
+	errWebhook string
+	epoch      uint64
+	tolerance  uint64
 }
 
 type tickResult struct {
@@ -149,15 +135,16 @@ type tickResult struct {
 	duration time.Duration
 }
 
-// runOneTick executes every child check once and posts a Discord
-// rollup capturing what just happened.
+// runOneTick executes every child check once and posts a single
+// rollup of the result to Discord. No hysteresis, no aliveness
+// gating — the channel sees something every tick, which is the
+// signal that the daemon is up.
 func (d *monitorDaemon) runOneTick(ctx context.Context) {
 	children, err := Checks(ctx, d.epoch, d.tolerance)
 	if err != nil {
 		// Treat a checks-build failure as a daemon-level error rather
 		// than a check failure — log + post to the error channel and
-		// skip this tick. Don't update hysteresis state; the next
-		// tick will try again.
+		// skip this tick. The next tick will try again.
 		fmt.Fprintf(os.Stderr, "monitor: build check list: %v\n", err)
 		if d.errWebhook != "" {
 			_ = postDiscord(d.errWebhook,
@@ -173,73 +160,41 @@ func (d *monitorDaemon) runOneTick(ctx context.Context) {
 	}
 	tickDur := time.Since(tickStart)
 
-	// Update hysteresis state and decide what to post.
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	var nowFailing []tickResult     // crossed the threshold this tick
-	var stillFailing []tickResult   // still failing but below threshold
-	var recovered []string          // were failing, now green
-	allPass := true
-
-	for _, r := range results {
-		prev := d.state[r.name]
-		if r.pass {
-			if prev >= d.failThreshold {
-				recovered = append(recovered, r.name)
-			}
-			d.state[r.name] = 0
-			continue
-		}
-		allPass = false
-		newCount := prev + 1
-		d.state[r.name] = newCount
-		switch {
-		case newCount == d.failThreshold:
-			nowFailing = append(nowFailing, r)
-		case newCount > d.failThreshold:
-			// already paged; suppress to avoid spam
-		default:
-			stillFailing = append(stillFailing, r)
-		}
-	}
-
-	// Compose the message.
-	switch {
-	case len(nowFailing) > 0 || len(recovered) > 0:
-		var b strings.Builder
-		fmt.Fprintf(&b, "**InvariantsMonitor — state change** (tick %s)\n", tickDur.Round(time.Second))
-		for _, r := range nowFailing {
-			fmt.Fprintf(&b, "❌ **FAIL** `%s` — failing %d consecutive ticks. Output:\n```%s```\n",
-				r.name, d.state[r.name], truncateForDiscord(r.output))
-		}
-		for _, name := range recovered {
-			fmt.Fprintf(&b, "✅ recovered: `%s`\n", name)
-		}
-		d.postOK(b.String())
-	case allPass && time.Since(d.lastAlivenessPing) >= d.alivenessInterval:
-		var b strings.Builder
-		fmt.Fprintf(&b, "✅ InvariantsMonitor: %d/%d checks pass (tick %s)\n",
-			len(results), len(results), tickDur.Round(time.Second))
-		for _, r := range results {
-			fmt.Fprintf(&b, "  • `%s` (%s)\n", r.name, r.duration.Round(time.Millisecond))
-		}
-		d.postOK(b.String())
-		d.lastAlivenessPing = time.Now()
-	case len(stillFailing) > 0:
-		// Below threshold — log locally, don't page.
-		for _, r := range stillFailing {
-			fmt.Printf("transient fail [%d/%d]: %s\n", d.state[r.name], d.failThreshold, r.name)
-		}
-	}
-
-	// Always log a one-line summary locally.
 	pass := 0
 	for _, r := range results {
 		if r.pass {
 			pass++
 		}
 	}
+
+	var b strings.Builder
+	if pass == len(results) {
+		fmt.Fprintf(&b, "✅ InvariantsMonitor: %d/%d pass (tick %s)\n",
+			pass, len(results), tickDur.Round(time.Second))
+		for _, r := range results {
+			fmt.Fprintf(&b, "  • `%s` (%s)\n", r.name, r.duration.Round(time.Millisecond))
+		}
+	} else {
+		fmt.Fprintf(&b, "⚠️ InvariantsMonitor: %d/%d pass (tick %s)\n",
+			pass, len(results), tickDur.Round(time.Second))
+		// Failures first with their output, then a summary of the
+		// passing checks for context.
+		for _, r := range results {
+			if !r.pass {
+				fmt.Fprintf(&b, "❌ FAIL `%s` (%s). Output:\n```%s```\n",
+					r.name, r.duration.Round(time.Millisecond),
+					truncateForDiscord(r.output))
+			}
+		}
+		for _, r := range results {
+			if r.pass {
+				fmt.Fprintf(&b, "  ✅ `%s` (%s)\n", r.name, r.duration.Round(time.Millisecond))
+			}
+		}
+	}
+	d.postOK(b.String())
+
+	// Local one-line summary for log scrapers.
 	fmt.Printf("tick %s: %d/%d passed\n", tickDur.Round(time.Second), pass, len(results))
 }
 
@@ -323,10 +278,8 @@ func redactURL(u string) string {
 }
 
 func init() {
-	monitorCmd.Flags().Duration("interval", 24*time.Hour, "tick cadence (e.g. 1h, 30m, 24h)")
+	monitorCmd.Flags().Duration("interval", 12*time.Hour, "tick cadence (e.g. 1h, 30m, 12h)")
 	monitorCmd.Flags().Bool("once", false, "run a single tick and exit")
-	monitorCmd.Flags().Int("fail-threshold", 2, "page only after this many consecutive same-check failures")
-	monitorCmd.Flags().Duration("aliveness-interval", 24*time.Hour, "send a green-state ping at most this often")
 	monitorCmd.Flags().Uint64("epoch", 0, "pin checks to this epoch (default: head-3 each tick)")
 	monitorCmd.Flags().Uint64("tolerance", 10000, "wei tolerance forwarded to each child check")
 	rootCmd.AddCommand(monitorCmd)
