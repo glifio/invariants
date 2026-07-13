@@ -49,7 +49,7 @@ func newAgentDTLCmd(use string) *cobra.Command {
 	cmd.Flags().Uint64("epoch", 0, "Check at epoch (default: head-3)")
 	cmd.Flags().Bool("all", false, "Check all agents")
 	cmd.Flags().Uint64("buffer-bps", 250, "Warn band: bps below MaxDTL where the agent is flagged but not failed (default 250 = 2.5%)")
-	cmd.Flags().Int("concurrency", 16, "parallel agent workers (each agent fans out per-miner internally; 16 fits comfortably in the 1000 req/min chain.love budget after task #27/#28 trimmed the per-agent RPC count)")
+	cmd.Flags().Int("concurrency", 0, "parallel agent workers (0/1 = sequential; each agent also fans out per-miner via util.Multiread, so effective Lotus load = workers × miners_per_agent × ~4 RPCs — sequential is the safe default against chain.love's rate limit)")
 	return cmd
 }
 
