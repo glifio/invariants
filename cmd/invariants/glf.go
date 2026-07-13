@@ -24,8 +24,8 @@ func newPoolGLFCmd(use string) *cobra.Command {
 	}
 	cmd.Flags().Uint64("epoch", 0, "Check at epoch (default: API last_processed_height-3)")
 	cmd.Flags().Bool("per-holder", false,
-		"Also reconcile every GLF holder's balance vs token.balanceOf (~2-3k holders, ~30s with concurrency=16)")
-	cmd.Flags().Int("concurrency", 16, "parallel balanceOf workers (--per-holder only)")
+		"Also reconcile every GLF holder's balance vs token.balanceOf (~2-3k holders; sequential to stay under the RPC rate limit — set --concurrency for faster runs)")
+	cmd.Flags().Int("concurrency", 0, "parallel balanceOf workers, --per-holder only (0/1 = sequential; higher values risk chain.love rate limit)")
 	cmd.Flags().Bool("include-zero", false,
 		"Include holders whose DB balance is zero (default: skip)")
 	return cmd

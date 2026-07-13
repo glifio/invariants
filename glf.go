@@ -100,7 +100,7 @@ func FetchGLFHolderBalancesFromContract(
 	concurrency int,
 ) (map[common.Address]*big.Int, error) {
 	if concurrency < 1 {
-		concurrency = 16
+		concurrency = 1
 	}
 	tok, err := pools.NewPoolTokenCaller(glfAddr, ethClient)
 	if err != nil {

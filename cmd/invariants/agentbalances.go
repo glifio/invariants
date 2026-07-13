@@ -33,7 +33,7 @@ func newAgentBalancesCmd(use string) *cobra.Command {
 	cmd.Flags().Uint64("random", 0, "Randomly select agents")
 	cmd.Flags().Bool("all", false, "Check all agents")
 	cmd.Flags().Uint64("max-lookback", 30000, "Skip transactions older than head minus this many epochs (0 disables). dRPC caps state-tree access at ~14d (~40k epochs); 30k gives a safety margin.")
-	cmd.Flags().Uint64("parallel", 8, "Number of agents to check concurrently (--all / --random)")
+	cmd.Flags().Uint64("parallel", 0, "Number of agents to check concurrently (0/1 = sequential; higher values risk hitting the chain.love / events API rate limit)")
 	return cmd
 }
 
