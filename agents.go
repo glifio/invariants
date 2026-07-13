@@ -3,6 +3,7 @@ package invariants
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -209,6 +210,12 @@ type Transaction struct {
 	Type             string
 }
 
+// ErrAgentNotIndexed is returned when the events API doesn't yet have
+// tx history for an agent — usually a race where the /agent list
+// includes an agent whose /agent/{id}/tx hasn't been backfilled yet.
+// Callers should treat this as "skip", not "fail".
+var ErrAgentNotIndexed = errors.New("agent not indexed by events API")
+
 // GetAgentTransactionsFromAPI calls the REST API to get the transactions for an Agent
 func GetAgentTransactionsFromAPI(ctx context.Context, eventsURL string, agentID uint64) ([]Transaction, error) {
 	url := fmt.Sprintf("%s/agent/%d/tx", eventsURL, agentID)
@@ -226,6 +233,9 @@ func GetAgentTransactionsFromAPI(ctx context.Context, eventsURL string, agentID 
 		return nil, err
 	}
 
+	if res.StatusCode == http.StatusNotFound {
+		return nil, ErrAgentNotIndexed
+	}
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("bad http status: %v", res.StatusCode)
 	}

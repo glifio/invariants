@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -183,6 +184,7 @@ func checkAgentBalancesParallel(
 		ndBal    *big.Int
 		diff     *big.Int
 		err      error
+		skipped  bool // API returned "not yet indexed" — race, not a failure
 		duration time.Duration
 	}
 
@@ -200,7 +202,11 @@ func checkAgentBalancesParallel(
 				r := result{agentID: a.ID}
 				dbBal, err := invariants.GetAgentAvailableBalanceAtHeightFromAPI(ctx, eventsURL, a.ID, epoch)
 				if err != nil {
-					r.err = fmt.Errorf("API at h=%d: %w", epoch, err)
+					if errors.Is(err, invariants.ErrAgentNotIndexed) {
+						r.skipped = true
+					} else {
+						r.err = fmt.Errorf("API at h=%d: %w", epoch, err)
+					}
 					r.duration = time.Since(t0)
 					results <- r
 					continue
@@ -235,7 +241,13 @@ func checkAgentBalancesParallel(
 	sort.Slice(collected, func(i, j int) bool { return collected[i].agentID < collected[j].agentID })
 
 	var diffsAbs []*big.Int
+	skipped := 0
 	for _, r := range collected {
+		if r.skipped {
+			fmt.Printf("Agent %d: SKIP (not yet indexed by events API)\n", r.agentID)
+			skipped++
+			continue
+		}
 		if r.err != nil {
 			fmt.Printf("Agent %d: ERROR %v\n", r.agentID, r.err)
 			failCount++
@@ -251,8 +263,8 @@ func checkAgentBalancesParallel(
 	}
 
 	elapsed := time.Since(startedAt).Round(time.Millisecond)
-	fmt.Printf("\nagent-balances summary: %d/%d failed @ epoch=%d in %s",
-		failCount, len(agents), epoch, elapsed)
+	fmt.Printf("\nagent-balances summary: %d/%d failed, %d skipped @ epoch=%d in %s",
+		failCount, len(agents), skipped, epoch, elapsed)
 	if len(diffsAbs) > 0 {
 		sort.Slice(diffsAbs, func(i, j int) bool { return diffsAbs[i].Cmp(diffsAbs[j]) < 0 })
 		max := diffsAbs[len(diffsAbs)-1]
