@@ -50,6 +50,7 @@ func newAgentDTLCmd(use string) *cobra.Command {
 	cmd.Flags().Bool("all", false, "Check all agents")
 	cmd.Flags().Uint64("buffer-bps", 250, "Warn band: bps below MaxDTL where the agent is flagged but not failed (default 250 = 2.5%)")
 	cmd.Flags().Int("concurrency", 0, "parallel agent workers (0/1 = sequential; each agent also fans out per-miner via util.Multiread, so effective Lotus load = workers × miners_per_agent × ~4 RPCs — sequential is the safe default against chain.love's rate limit)")
+	cmd.Flags().Bool("show-warn", false, "print per-agent WARN lines (agents inside the buffer band but not yet over max); off by default so the monitor's output stays quiet, since WARN doesn't fail the check")
 	return cmd
 }
 
@@ -77,6 +78,7 @@ func runAgentDTL(cmd *cobra.Command, args []string) {
 	allAgents, _ := cmd.Flags().GetBool("all")
 	bufferBps, _ := cmd.Flags().GetUint64("buffer-bps")
 	concurrency, _ := cmd.Flags().GetInt("concurrency")
+	showWarn, _ := cmd.Flags().GetBool("show-warn")
 
 	var agentIDs []uint64
 	if !allAgents {
@@ -140,8 +142,10 @@ func runAgentDTL(cmd *cobra.Command, args []string) {
 				d.AgentID, fil(d.Debt), fil(d.LV), pct(d.DTL), pct(d.MaxDTL), d.Tier)
 			overMax++
 		case invariants.DTLWarn:
-			fmt.Printf("  ⚠ agent %d WARN  debt=%s lv=%s dtl=%s%% maxDTL=%s%% (tier %d)\n",
-				d.AgentID, fil(d.Debt), fil(d.LV), pct(d.DTL), pct(d.MaxDTL), d.Tier)
+			if showWarn {
+				fmt.Printf("  ⚠ agent %d WARN  debt=%s lv=%s dtl=%s%% maxDTL=%s%% (tier %d)\n",
+					d.AgentID, fil(d.Debt), fil(d.LV), pct(d.DTL), pct(d.MaxDTL), d.Tier)
+			}
 			warn++
 		case invariants.DTLNoLV:
 			fmt.Printf("  ❌ agent %d NO-LV  debt=%s lv=0 (zero collateral, positive debt)\n",
