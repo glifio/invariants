@@ -1,10 +1,20 @@
 # glifio/invariants build helpers.
 
-.PHONY: build abigen forge-build forge-clean
+.PHONY: build abigen forge-build forge-clean docker-build docker-push
 
 # Default: build the CLI.
 build:
 	go build -o invariants ./cmd/invariants
+
+# Build the container image, tagged with the current git SHA.
+docker-build:
+	git rev-parse HEAD
+	docker build --no-cache --tag inv --tag "gcr.io/glif-370419/inv:$$(git rev-parse HEAD)" .
+
+# Push the current SHA-tagged image to GCR.
+docker-push:
+	git rev-parse HEAD
+	docker push "gcr.io/glif-370419/inv:$$(git rev-parse HEAD)"
 
 # Compile the InvariantsQuery contract via Foundry.
 forge-build:
