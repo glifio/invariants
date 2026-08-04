@@ -110,12 +110,12 @@ func runAgentDTL(cmd *cobra.Command, args []string) {
 		addrs[i] = s.Address
 	}
 
-	lapi, closer, err := sdk.Extern().ConnectLotusClient()
-	if err != nil {
-		log.Fatalf("connect lotus: %v", err)
+	// Singleton Lotus connection — routed through the RPC rate limiter.
+	node := singleton.Lotus()
+	if node == nil {
+		log.Fatal("lotus singleton not initialized")
 	}
-	defer closer()
-	ts, err := lapi.ChainGetTipSetByHeight(ctx, abi.ChainEpoch(epoch), ltypes.EmptyTSK)
+	ts, err := node.Api.ChainGetTipSetByHeight(ctx, abi.ChainEpoch(epoch), ltypes.EmptyTSK)
 	if err != nil {
 		log.Fatalf("ChainGetTipSetByHeight: %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/glifio/invariants/ratelimit"
 	"github.com/glifio/invariants/singleton"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -59,6 +60,7 @@ func init() {
 	viper.BindEnv("postgres")
 	viper.BindEnv("discord_webhook_url")
 	viper.BindEnv("discord_webhook_url_errors")
+	viper.BindEnv("rpc_max_per_minute")
 }
 
 func initConfig() {
@@ -93,6 +95,19 @@ func initSingleton(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Client-side RPC throttle. The provider budget (chain.love) is
+	// 1000 req/min; default to 900 so bursts + the limiter's burst
+	// allowance stay under it. Must run before any client dials.
+	// RPC_MAX_PER_MINUTE=0 disables.
+	perMinute := 900
+	if viper.IsSet("rpc_max_per_minute") {
+		perMinute = viper.GetInt("rpc_max_per_minute")
+	}
+	ratelimit.Install(perMinute,
+		viper.GetString("lotus_archive_addr"),
+		viper.GetString("lotus_private_addr"),
+	)
 
 	if !useArchiveNode {
 		if os.Getenv("QUIET") == "" {

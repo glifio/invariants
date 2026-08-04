@@ -71,7 +71,6 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 	once, _ := cmd.Flags().GetBool("once")
 	failThreshold, _ := cmd.Flags().GetInt("fail-threshold")
 	alivenessInterval, _ := cmd.Flags().GetDuration("aliveness-interval")
-	spacing, _ := cmd.Flags().GetDuration("spacing")
 	epoch, _ := cmd.Flags().GetUint64("epoch")
 	tolerance, _ := cmd.Flags().GetUint64("tolerance")
 
@@ -95,7 +94,6 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 	d := &monitorDaemon{
 		interval:          interval,
 		alivenessInterval: alivenessInterval,
-		spacing:           spacing,
 		webhook:           webhook,
 		errWebhook:        errWebhook,
 		failThreshold:     failThreshold,
@@ -109,8 +107,8 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 		return
 	}
 
-	fmt.Printf("InvariantsMonitor starting: interval=%s aliveness=%s spacing=%s fail-threshold=%d webhook=%s\n",
-		interval, alivenessInterval, spacing, failThreshold, redactURL(webhook))
+	fmt.Printf("InvariantsMonitor starting: interval=%s aliveness=%s fail-threshold=%d webhook=%s\n",
+		interval, alivenessInterval, failThreshold, redactURL(webhook))
 	d.postOK("InvariantsMonitor starting up. interval=" + interval.String())
 
 	// First tick immediately, then on the ticker.
@@ -133,7 +131,6 @@ func runMonitor(cmd *cobra.Command, _ []string) {
 type monitorDaemon struct {
 	interval          time.Duration
 	alivenessInterval time.Duration
-	spacing           time.Duration
 	webhook           string
 	errWebhook        string
 	failThreshold     int
@@ -171,17 +168,7 @@ func (d *monitorDaemon) runOneTick(ctx context.Context) {
 	results := make([]tickResult, 0, len(children))
 
 	tickStart := time.Now()
-	for i, ch := range children {
-		if i > 0 && d.spacing > 0 {
-			// Let chain.love's per-minute rate limit window slide clean
-			// between checks — each check individually stays under budget
-			// but back-to-back they cumulatively burn through it.
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(d.spacing):
-			}
-		}
+	for _, ch := range children {
 		results = append(results, d.runChild(ctx, ch))
 	}
 	tickDur := time.Since(tickStart)
@@ -340,7 +327,6 @@ func init() {
 	monitorCmd.Flags().Bool("once", false, "run a single tick and exit")
 	monitorCmd.Flags().Int("fail-threshold", 2, "page only after this many consecutive same-check failures")
 	monitorCmd.Flags().Duration("aliveness-interval", 24*time.Hour, "send a green-state ping at most this often")
-	monitorCmd.Flags().Duration("spacing", 60*time.Second, "pause between checks within a tick so chain.love's per-minute rate-limit window can slide clean; 0 = no pause")
 	monitorCmd.Flags().Uint64("epoch", 0, "pin checks to this epoch (default: head-3 each tick)")
 	monitorCmd.Flags().Uint64("tolerance", 10000, "wei tolerance forwarded to each child check")
 	rootCmd.AddCommand(monitorCmd)

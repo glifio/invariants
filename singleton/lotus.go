@@ -9,7 +9,20 @@ import (
 	"github.com/filecoin-project/go-jsonrpc"
 	lotusapi "github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
+	"github.com/glifio/invariants/ratelimit"
 )
+
+// jsonrpcOpts returns the client options for a Lotus connection. When
+// the process-wide RPC rate limiter is installed, the connection is
+// routed through its throttled HTTP client — go-jsonrpc has its own
+// private http.Client, so it is NOT covered by the http.DefaultTransport
+// wrap that handles the eth clients.
+func jsonrpcOpts() []jsonrpc.Option {
+	if c := ratelimit.HTTPClient(); c != nil {
+		return []jsonrpc.Option{jsonrpc.WithHTTPClient(c)}
+	}
+	return nil
+}
 
 var lotusAPIOnce sync.Once
 var lotusArchiveAPIOnce sync.Once
@@ -48,6 +61,7 @@ func ConnectLotus(opts ChainOptions) error {
 			"Filecoin",
 			lotusapi.GetInternalStructs(&lotusClient.Api),
 			head,
+			jsonrpcOpts()...,
 		)
 
 		if err != nil {
@@ -96,6 +110,7 @@ func ConnectArchiveLotus(opts ChainOptions) error {
 			"Filecoin",
 			lotusapi.GetInternalStructs(&lotusClient.Api),
 			head,
+			jsonrpcOpts()...,
 		)
 
 		if err != nil {

@@ -21,6 +21,7 @@ import (
 	poolstypes "github.com/glifio/go-pools/types"
 	"github.com/glifio/go-pools/util"
 	invabigen "github.com/glifio/invariants/abigen"
+	"github.com/glifio/invariants/singleton"
 )
 
 // AgentDTL is one agent's debt-to-liquidation-value snapshot, joined
@@ -106,12 +107,14 @@ func FetchAgentDTLs(
 
 	// One Lotus connection shared across workers (FullNodeStruct's RPC
 	// client is goroutine-safe), and one fetch of the three tipset-
-	// globals reused for every miner compute.
-	lapi, closer, err := sdk.Extern().ConnectLotusClient()
-	if err != nil {
-		return nil, fmt.Errorf("connect lotus: %w", err)
+	// globals reused for every miner compute. Use the singleton's
+	// connection — it is routed through the process-wide RPC rate
+	// limiter; sdk.Extern().ConnectLotusClient() is not.
+	node := singleton.Lotus()
+	if node == nil {
+		return nil, fmt.Errorf("lotus singleton not initialized")
 	}
-	defer closer()
+	lapi := &node.Api
 
 	globals, err := fetchTipsetGlobals(ctx, lapi, ts)
 	if err != nil {

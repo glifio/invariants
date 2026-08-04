@@ -26,6 +26,7 @@ require (
 	github.com/filecoin-project/specs-actors/v8 v8.0.1
 	github.com/glifio/go-pools v1.4.5-0.20251208214107-5d0fe18cd81a
 	github.com/lib/pq v1.12.3
+	golang.org/x/time v0.15.0
 )
 
 require (
