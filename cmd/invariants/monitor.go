@@ -227,9 +227,11 @@ func (d *monitorDaemon) runOneTick(ctx context.Context) {
 		d.postOK(b.String())
 		d.lastAlivenessPing = time.Now()
 	case len(stillFailing) > 0:
-		// Below threshold — log locally, don't page.
+		// Below threshold — log locally (with output, so prod logs show
+		// the actual error without waiting for the page), don't page.
 		for _, r := range stillFailing {
-			fmt.Printf("transient fail [%d/%d]: %s\n", d.state[r.name], d.failThreshold, r.name)
+			fmt.Printf("transient fail [%d/%d]: %s — output tail:\n%s\n",
+				d.state[r.name], d.failThreshold, r.name, truncateForDiscord(r.output))
 		}
 	}
 
