@@ -53,7 +53,6 @@ func init() {
 	viper.BindEnv("lotus_private_token")
 	viper.BindEnv("lotus_private_addr")
 	viper.BindEnv("events_api")
-	viper.BindEnv("query_addr")
 	viper.BindEnv("invariants_query_addr")
 	viper.BindEnv("glf_addr")
 	viper.BindEnv("wfil_addr")

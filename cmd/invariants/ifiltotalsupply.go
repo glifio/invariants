@@ -24,7 +24,7 @@ func newPoolIfilCmd(use string) *cobra.Command {
 	cmd.Flags().Uint64("epoch", 0, "Check at epoch")
 	cmd.Flags().Bool("find-missing", false, "Find missing transactions")
 	cmd.Flags().Bool("per-depositor", false,
-		"Also reconcile every iFIL holder's balance vs Query.GetDepositorsIFILBalances (slow on prod; ~7-8k holders)")
+		"Also reconcile every iFIL holder's balance vs InvariantsQuery.getIFILBalances (slow on prod; ~7-8k holders)")
 	cmd.Flags().Int("chunk", 500, "Holders per Query batch RPC (--per-depositor only)")
 	cmd.Flags().Bool("include-zero", false,
 		"Include holders whose DB balance is zero in the per-depositor check (default: skip dust)")
@@ -99,16 +99,16 @@ func runPoolIfil(cmd *cobra.Command, args []string) {
 }
 
 // runIFILPerDepositor compares every (non-zero) DB-derived holder
-// balance to Query.GetDepositorsIFILBalances at the same height.
+// balance to InvariantsQuery.getIFILBalances at the same height.
 // Returns the count of mismatches.
 func runIFILPerDepositor(ctx context.Context, epoch uint64, chunkSize int, includeZero bool) int {
 	postgresURL := viper.GetString("postgres")
 	if postgresURL == "" {
 		log.Fatal("POSTGRES env var must be set for --per-depositor")
 	}
-	queryAddrStr := viper.GetString("query_addr")
+	queryAddrStr := viper.GetString("invariants_query_addr")
 	if queryAddrStr == "" {
-		log.Fatal("QUERY_ADDR must be set for --per-depositor")
+		log.Fatal("INVARIANTS_QUERY_ADDR must be set for --per-depositor")
 	}
 	queryAddr := common.HexToAddress(queryAddrStr)
 

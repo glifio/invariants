@@ -17,7 +17,7 @@ import (
 type IFILDepositorBalance struct {
 	Address common.Address
 	DB      *big.Int // sum(transfers in) − sum(transfers out) at h, from ifil table
-	Chain   *big.Int // Query.GetDepositorsIFILBalances([addr])[0]
+	Chain   *big.Int // InvariantsQuery.getIFILBalances([addr])[0]
 }
 
 // FetchIFILDepositorBalancesFromDB returns the iFIL balance for every
@@ -73,15 +73,19 @@ func FetchIFILDepositorBalancesFromDB(ctx context.Context, postgresURL string, h
 	return out, rows.Err()
 }
 
-// FetchIFILDepositorBalancesFromContract reads Query.GetDepositorsIFILBalances
-// in chunks (one batch RPC per chunk) for the supplied addresses at h.
-// On batch revert (e.g. one bad address poisons the batch) it falls back
-// to per-address calls within that chunk so the whole run survives one
-// problem holder.
+// FetchIFILDepositorBalancesFromContract reads
+// InvariantsQuery.getIFILBalances in chunks (one batch RPC per chunk)
+// for the supplied addresses at h. On batch revert (e.g. one bad
+// address poisons the batch) it falls back to per-address calls within
+// that chunk so the whole run survives one problem holder.
+//
+// `invQueryAddr` is the deployed InvariantsQuery contract (see
+// INVARIANTS_QUERY_ADDR); the legacy standalone Query helper pinned
+// pre-upgrade token addresses and is defunct.
 func FetchIFILDepositorBalancesFromContract(
 	ctx context.Context,
 	ethClient *ethclient.Client,
-	queryAddr common.Address,
+	invQueryAddr common.Address,
 	height uint64,
 	addresses []common.Address,
 	chunkSize int,
@@ -89,9 +93,9 @@ func FetchIFILDepositorBalancesFromContract(
 	if chunkSize <= 0 {
 		chunkSize = 500
 	}
-	q, err := abigen.NewQueryCaller(queryAddr, ethClient)
+	q, err := abigen.NewInvariantsQueryCaller(invQueryAddr, ethClient)
 	if err != nil {
-		return nil, fmt.Errorf("query caller: %w", err)
+		return nil, fmt.Errorf("invariants query caller: %w", err)
 	}
 	opts := &bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(height)}
 
@@ -102,11 +106,11 @@ func FetchIFILDepositorBalancesFromContract(
 			end = len(addresses)
 		}
 		chunk := addresses[i:end]
-		bals, err := q.GetDepositorsIFILBalances(opts, chunk)
+		bals, err := q.GetIFILBalances(opts, chunk)
 		if err != nil {
 			// Per-address fallback for this chunk only.
 			for _, addr := range chunk {
-				if r, e := q.GetDepositorsIFILBalances(opts, []common.Address{addr}); e == nil {
+				if r, e := q.GetIFILBalances(opts, []common.Address{addr}); e == nil {
 					out[addr] = r[0]
 				}
 			}

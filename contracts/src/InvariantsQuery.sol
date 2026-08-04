@@ -153,6 +153,24 @@ contract InvariantsQuery {
     }
 
     // ------------------------------------------------------------------
+    // iFIL per-holder balances
+    // ------------------------------------------------------------------
+
+    /// @notice Batch iFIL balanceOf. Replaces the defunct legacy query
+    /// helper (QUERY_ADDR) the per-depositor check used to depend on —
+    /// that contract pinned pre-upgrade addresses and now returns zeros.
+    function getIFILBalances(address[] calldata holders)
+        external
+        view
+        returns (uint256[] memory out)
+    {
+        out = new uint256[](holders.length);
+        for (uint256 i = 0; i < holders.length; i++) {
+            out[i] = ifil.balanceOf(holders[i]);
+        }
+    }
+
+    // ------------------------------------------------------------------
     // LP Plus per-token state
     // ------------------------------------------------------------------
 
