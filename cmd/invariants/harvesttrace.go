@@ -18,7 +18,7 @@ import (
 )
 
 // newPoolHarvestTraceCmd: chain-canonical scan of every WFIL Transfer
-// where from = pool and to ∈ (treasury1, treasury2) — i.e. the rows
+// where from = pool and to ∈ the treasury receivers — i.e. the rows
 // the SQL `harvest(h)` function sums. Emits the chain-truth list,
 // the DB list, and the diff.
 //
@@ -48,7 +48,8 @@ func newPoolHarvestTraceCmd() *cobra.Command {
 	}, "pool address(es) to treat as treasurer (sender of WFIL); accepts multiple")
 	cmd.Flags().StringSlice("treasury", []string{
 		"0xFf00000000000000000000000000000000219b24",
-		"0xff0000000000000000000000000000000031b072",
+		"0xff0000000000000000000000000000000031b072", // f03256434, the treasury multisig
+		"0xF7C2B76615216Dea11DaED0434E40C0f0535e656", // FeeDistributor (f03848400), ROUTER_TREASURY from 2026-10-16
 	}, "treasury addresses (receivers; can repeat)")
 	cmd.Flags().Bool("emit-sql", false, "emit SQL INSERT statements for chain rows missing from DB")
 	return cmd
