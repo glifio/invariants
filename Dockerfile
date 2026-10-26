@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.25-bookworm AS build
+FROM golang:1.26-bookworm AS build
 
 ENV CGO_ENABLED=0
 
